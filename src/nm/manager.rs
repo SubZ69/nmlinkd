@@ -1,0 +1,195 @@
+use std::collections::HashMap;
+
+use tracing::warn;
+use zbus::object_server::SignalEmitter;
+use zbus::zvariant::OwnedObjectPath;
+
+use crate::mapping::nm_device_state;
+use crate::netlink::queries;
+use crate::state::{self, SharedState};
+
+pub struct NmManager {
+    pub state: SharedState,
+}
+
+#[zbus::interface(name = "org.freedesktop.NetworkManager")]
+impl NmManager {
+    #[zbus(property(emits_changed_signal = "false"))]
+    async fn state(&self) -> u32 {
+        self.state.read().await.global_state
+    }
+
+    #[zbus(property)]
+    async fn connectivity(&self) -> u32 {
+        self.state.read().await.connectivity
+    }
+
+    #[zbus(property)]
+    async fn version(&self) -> String {
+        "1.52.0".to_owned()
+    }
+
+    #[zbus(property)]
+    async fn networking_enabled(&self) -> bool {
+        true
+    }
+
+    #[zbus(property)]
+    async fn devices(&self) -> Vec<OwnedObjectPath> {
+        self.device_paths().await
+    }
+
+    #[zbus(property)]
+    async fn active_connections(&self) -> Vec<OwnedObjectPath> {
+        self.active_connection_paths().await
+    }
+
+    #[zbus(property)]
+    async fn primary_connection(&self) -> OwnedObjectPath {
+        let state = self.state.read().await;
+        for dev in state.devices.values() {
+            if dev.nm_state >= nm_device_state::ACTIVATED
+                && (dev.gateway4.is_some() || dev.gateway6.is_some())
+            {
+                return state::active_connection_path(dev.ifindex);
+            }
+        }
+        state::root_path()
+    }
+
+    #[zbus(property)]
+    async fn primary_connection_type(&self) -> String {
+        "802-3-ethernet".to_string()
+    }
+
+    #[zbus(property)]
+    async fn metered(&self) -> u32 {
+        4 // NM_METERED_GUESS_NO
+    }
+
+    async fn get_devices(&self) -> Vec<OwnedObjectPath> {
+        self.device_paths().await
+    }
+
+    async fn get_permissions(&self) -> HashMap<String, String> {
+        let mut perms = HashMap::new();
+        perms.insert(
+            "org.freedesktop.NetworkManager.network-control".to_string(),
+            "yes".to_string(),
+        );
+        for key in [
+            "org.freedesktop.NetworkManager.checkpoint-rollback",
+            "org.freedesktop.NetworkManager.enable-disable-connectivity-check",
+            "org.freedesktop.NetworkManager.enable-disable-network",
+            "org.freedesktop.NetworkManager.enable-disable-statistics",
+            "org.freedesktop.NetworkManager.enable-disable-wifi",
+            "org.freedesktop.NetworkManager.enable-disable-wimax",
+            "org.freedesktop.NetworkManager.enable-disable-wwan",
+            "org.freedesktop.NetworkManager.reload",
+            "org.freedesktop.NetworkManager.settings.modify.global-dns",
+            "org.freedesktop.NetworkManager.settings.modify.hostname",
+            "org.freedesktop.NetworkManager.settings.modify.own",
+            "org.freedesktop.NetworkManager.settings.modify.system",
+            "org.freedesktop.NetworkManager.sleep-wake",
+            "org.freedesktop.NetworkManager.wifi.scan",
+            "org.freedesktop.NetworkManager.wifi.share.open",
+            "org.freedesktop.NetworkManager.wifi.share.protected",
+        ] {
+            perms.insert(key.to_string(), "no".to_string());
+        }
+        perms
+    }
+
+    async fn add_and_activate_connection(
+        &self,
+        _connection: HashMap<String, HashMap<String, zbus::zvariant::Value<'_>>>,
+        device: OwnedObjectPath,
+        _specific_object: OwnedObjectPath,
+    ) -> zbus::fdo::Result<(OwnedObjectPath, OwnedObjectPath)> {
+        let ifindex = self.resolve_device_ifindex(&device).await?;
+
+        if let Err(e) = queries::link_set_up(ifindex).await {
+            warn!(ifindex, "add_and_activate failed: {e}");
+            return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
+        }
+
+        Ok((
+            state::settings_path(ifindex),
+            state::active_connection_path(ifindex),
+        ))
+    }
+
+    async fn activate_connection(
+        &self,
+        _connection: OwnedObjectPath,
+        device: OwnedObjectPath,
+        _specific_object: OwnedObjectPath,
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
+        let ifindex = self.resolve_device_ifindex(&device).await?;
+
+        if let Err(e) = queries::link_set_up(ifindex).await {
+            warn!(ifindex, "activate connection failed: {e}");
+            return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
+        }
+
+        Ok(state::active_connection_path(ifindex))
+    }
+
+    async fn get_device_by_ip_iface(&self, iface: &str) -> zbus::fdo::Result<OwnedObjectPath> {
+        let state = self.state.read().await;
+        for dev in state.devices.values() {
+            if dev.name == iface {
+                return Ok(state::device_path(dev.ifindex));
+            }
+        }
+        Err(zbus::fdo::Error::UnknownObject(format!(
+            "No device for interface {iface}"
+        )))
+    }
+
+    #[zbus(signal)]
+    pub async fn state_changed(emitter: &SignalEmitter<'_>, state: u32) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn device_added(
+        emitter: &SignalEmitter<'_>,
+        device_path: OwnedObjectPath,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn device_removed(
+        emitter: &SignalEmitter<'_>,
+        device_path: OwnedObjectPath,
+    ) -> zbus::Result<()>;
+}
+
+impl NmManager {
+    async fn resolve_device_ifindex(&self, device: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
+        let state = self.state.read().await;
+        state
+            .devices
+            .values()
+            .find(|d| state::device_path(d.ifindex) == *device)
+            .map(|d| d.ifindex)
+            .ok_or_else(|| zbus::fdo::Error::UnknownObject(format!("No device at {device}")))
+    }
+
+    async fn device_paths(&self) -> Vec<OwnedObjectPath> {
+        let state = self.state.read().await;
+        state
+            .devices
+            .keys()
+            .map(|&idx| state::device_path(idx))
+            .collect()
+    }
+
+    async fn active_connection_paths(&self) -> Vec<OwnedObjectPath> {
+        let state = self.state.read().await;
+        state
+            .devices
+            .values()
+            .filter(|d| d.nm_state >= nm_device_state::ACTIVATED)
+            .map(|d| state::active_connection_path(d.ifindex))
+            .collect()
+    }
+}

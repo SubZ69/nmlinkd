@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch: x86_64
+          - target: aarch64-unknown-linux-gnu
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross
+        run: cargo install cross --locked
+
+      - name: Build
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          DIR="nmlinkd-${TAG}-${{ matrix.arch }}"
+          mkdir -p "$DIR"
+          cp target/${{ matrix.target }}/release/nmlinkd "$DIR/"
+          cp dist/nmlinkd.service "$DIR/"
+          cp dist/org.freedesktop.NetworkManager.conf "$DIR/"
+          cp dist/org.freedesktop.NetworkManager.service "$DIR/"
+          cp dist/org.freedesktop.NetworkManager.policy "$DIR/"
+          printf '%s\n' \
+            "install -Dm755 nmlinkd /usr/bin/nmlinkd" \
+            "install -Dm644 nmlinkd.service /usr/lib/systemd/system/nmlinkd.service" \
+            "install -Dm644 org.freedesktop.NetworkManager.conf /usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf" \
+            "install -Dm644 org.freedesktop.NetworkManager.service /usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service" \
+            "install -Dm644 org.freedesktop.NetworkManager.policy /usr/share/polkit-1/actions/org.freedesktop.NetworkManager.policy" \
+            > "$DIR/INSTALL"
+          tar czf "${DIR}.tar.gz" "$DIR"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmlinkd-${{ matrix.arch }}
+          path: nmlinkd-v*-${{ matrix.arch }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: nmlinkd-*/*.tar.gz
+          generate_release_notes: true

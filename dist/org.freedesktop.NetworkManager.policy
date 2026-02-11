@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE policyconfig PUBLIC
+    "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+    "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+
+  <vendor>nmlinkd</vendor>
+  <vendor_url>https://github.com/subz69/nmlinkd</vendor_url>
+
+  <action id="org.freedesktop.NetworkManager.network-control">
+    <description>Control network connections</description>
+    <message>System policy prevents control of network connections</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-network">
+    <description>Enable or disable system networking</description>
+    <message
+        >System policy prevents enabling or disabling system networking</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-wifi">
+    <description>Enable or disable WiFi devices</description>
+    <message>System policy prevents enabling or disabling WiFi devices</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.enable-disable-wwan">
+    <description>Enable or disable mobile broadband devices</description>
+    <message
+        >System policy prevents enabling or disabling mobile broadband devices</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.sleep-wake">
+    <description>Put NetworkManager to sleep or wake it up</description>
+    <message
+        >System policy prevents putting NetworkManager to sleep or waking it up</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.system">
+    <description>Modify network connections for all users</description>
+    <message
+        >System policy prevents modification of network settings for all users</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="org.freedesktop.NetworkManager.settings.modify.own">
+    <description>Modify personal network connections</description>
+    <message
+        >System policy prevents modification of personal network settings</message>
+    <defaults>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>

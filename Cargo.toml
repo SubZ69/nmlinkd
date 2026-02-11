@@ -1,0 +1,24 @@
+[package]
+name = "nmlinkd"
+version = "0.1.0"
+edition = "2024"
+description = "NetworkManager D-Bus bridge for netlink-based network stacks"
+license = "MIT"
+keywords = ["networkmanager", "netlink", "dbus", "network"]
+
+[dependencies]
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "signal"] }
+rtnetlink = "0.18"
+netlink-packet-core = "0.8"
+netlink-packet-route = "0.25"
+netlink-sys = "0.8"
+futures = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "s"

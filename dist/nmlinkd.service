@@ -1,0 +1,24 @@
+[Unit]
+Description=NetworkManager D-Bus bridge for netlink-based network stacks
+Documentation=https://github.com/subz69/nmlinkd
+After=dbus.service
+Requires=dbus.service
+Conflicts=NetworkManager.service
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.NetworkManager
+ExecStart=/usr/bin/nmlinkd
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/etc/resolv.conf
+ReadOnlyPaths=/run/systemd/resolve/resolv.conf
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.freedesktop.NetworkManager
+Exec=/usr/bin/nmlinkd
+User=root
+SystemdService=nmlinkd.service
