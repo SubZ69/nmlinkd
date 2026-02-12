@@ -107,8 +107,9 @@ impl NmManager {
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<(OwnedObjectPath, OwnedObjectPath)> {
         let ifindex = self.resolve_device_ifindex(&device).await?;
+        let handle = self.state.read().await.handle().clone();
 
-        if let Err(e) = queries::link_set_up(ifindex).await {
+        if let Err(e) = queries::link_set_up(&handle, ifindex).await {
             warn!(ifindex, "add_and_activate failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
         }
@@ -126,8 +127,9 @@ impl NmManager {
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<OwnedObjectPath> {
         let ifindex = self.resolve_device_ifindex(&device).await?;
+        let handle = self.state.read().await.handle().clone();
 
-        if let Err(e) = queries::link_set_up(ifindex).await {
+        if let Err(e) = queries::link_set_up(&handle, ifindex).await {
             warn!(ifindex, "activate connection failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
         }

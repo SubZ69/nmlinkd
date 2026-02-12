@@ -88,8 +88,9 @@ async fn handle_address_change(
     addr_msg: &AddressMessage,
 ) {
     let ifindex = addr_msg.header.index as i32;
+    let handle = shared.read().await.handle().clone();
 
-    queries::reload_addresses_for(ifindex, shared).await;
+    queries::reload_addresses_for(&handle, ifindex, shared).await;
     queries::reload_nameservers(shared).await;
 
     let state_change = {
@@ -118,7 +119,8 @@ async fn handle_address_change(
 
 /// Handle NewRoute / DelRoute: reload gateways, recompute global state, emit signals.
 async fn handle_route_change(nm_conn: &Connection, shared: &SharedState) {
-    queries::reload_gateways(shared).await;
+    let handle = shared.read().await.handle().clone();
+    queries::reload_gateways(&handle, shared).await;
     let global_state = {
         let mut state = shared.write().await;
         state.recompute_global_state();
@@ -189,8 +191,9 @@ async fn handle_new_link(
             state.devices.insert(ifindex, dev);
         }
 
-        queries::reload_addresses_for(ifindex, shared).await;
-        queries::reload_gateways(shared).await;
+        let handle = shared.read().await.handle().clone();
+        queries::reload_addresses_for(&handle, ifindex, shared).await;
+        queries::reload_gateways(&handle, shared).await;
         queries::reload_nameservers(shared).await;
 
         {

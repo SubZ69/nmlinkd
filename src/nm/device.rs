@@ -129,7 +129,8 @@ impl NmDevice {
     }
 
     async fn disconnect(&self) -> zbus::fdo::Result<()> {
-        if let Err(e) = queries::link_set_down(self.ifindex).await {
+        let handle = self.state.read().await.handle().clone();
+        if let Err(e) = queries::link_set_down(&handle, self.ifindex).await {
             warn!(ifindex = self.ifindex, "disconnect failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!(
                 "Failed to disconnect: {e}"

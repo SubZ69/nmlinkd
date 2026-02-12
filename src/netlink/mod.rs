@@ -35,6 +35,9 @@ pub async fn load_initial_state(shared: &SharedState) -> Result<()> {
     let (conn, handle, _) = rtnetlink::new_connection()?;
     tokio::spawn(conn);
 
+    // Store handle in shared state for reuse by all reload/query functions
+    shared.write().await.netlink_handle = Some(handle.clone());
+
     // Load all network links
     let mut links = handle.link().get().execute();
     let mut discovered_devices = Vec::new();
@@ -85,7 +88,7 @@ pub async fn load_initial_state(shared: &SharedState) -> Result<()> {
     }
 
     // Load addresses, gateways, DNS
-    queries::load_initial_addresses(shared).await?;
+    queries::load_initial_addresses(&handle, shared).await?;
 
     // Now update device states based on actual IPs
     {

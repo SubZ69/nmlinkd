@@ -21,10 +21,7 @@ pub fn format_mac(bytes: &[u8]) -> String {
 }
 
 /// Load IP addresses and default gateways into the shared state.
-pub async fn load_initial_addresses(shared: &SharedState) -> Result<()> {
-    let (conn, handle, _) = rtnetlink::new_connection()?;
-    tokio::spawn(conn);
-
+pub async fn load_initial_addresses(handle: &rtnetlink::Handle, shared: &SharedState) -> Result<()> {
     let state = shared.read().await;
     let ifindexes: Vec<i32> = state.devices.keys().copied().collect();
     drop(state);
@@ -63,7 +60,7 @@ pub async fn load_initial_addresses(shared: &SharedState) -> Result<()> {
         }
     }
 
-    load_default_gateways(&handle, shared).await?;
+    load_default_gateways(handle, shared).await?;
     reload_nameservers(shared).await;
 
     Ok(())
@@ -129,16 +126,7 @@ fn parse_default_gateway(
 }
 
 /// Reload IP addresses for a single interface.
-pub async fn reload_addresses_for(ifindex: i32, shared: &SharedState) {
-    let Ok((conn, handle, _)) = rtnetlink::new_connection() else {
-        warn!(
-            ifindex,
-            "failed to create netlink connection for address reload"
-        );
-        return;
-    };
-    tokio::spawn(conn);
-
+pub async fn reload_addresses_for(handle: &rtnetlink::Handle, ifindex: i32, shared: &SharedState) {
     let mut ipv4 = Vec::new();
     let mut ipv6 = Vec::new();
 
@@ -178,13 +166,7 @@ pub async fn reload_addresses_for(ifindex: i32, shared: &SharedState) {
 }
 
 /// Reload default gateways for all devices.
-pub async fn reload_gateways(shared: &SharedState) {
-    let Ok((conn, handle, _)) = rtnetlink::new_connection() else {
-        warn!("failed to create netlink connection for gateway reload");
-        return;
-    };
-    tokio::spawn(conn);
-
+pub async fn reload_gateways(handle: &rtnetlink::Handle, shared: &SharedState) {
     {
         let mut state = shared.write().await;
         for dev in state.devices.values_mut() {
@@ -193,27 +175,25 @@ pub async fn reload_gateways(shared: &SharedState) {
         }
     }
 
-    if let Err(e) = load_default_gateways(&handle, shared).await {
+    if let Err(e) = load_default_gateways(handle, shared).await {
         warn!("failed to reload gateways: {e}");
     }
 }
 
 /// Set a network interface up or down via rtnetlink.
-async fn link_set(ifindex: i32, up: bool) -> Result<()> {
-    let (conn, handle, _) = rtnetlink::new_connection()?;
-    tokio::spawn(conn);
+async fn link_set(handle: &rtnetlink::Handle, ifindex: i32, up: bool) -> Result<()> {
     let builder = rtnetlink::LinkMessageBuilder::<LinkUnspec>::new().index(ifindex as u32);
     let msg = if up { builder.up() } else { builder.down() }.build();
     handle.link().set(msg).execute().await?;
     Ok(())
 }
 
-pub async fn link_set_up(ifindex: i32) -> Result<()> {
-    link_set(ifindex, true).await
+pub async fn link_set_up(handle: &rtnetlink::Handle, ifindex: i32) -> Result<()> {
+    link_set(handle, ifindex, true).await
 }
 
-pub async fn link_set_down(ifindex: i32) -> Result<()> {
-    link_set(ifindex, false).await
+pub async fn link_set_down(handle: &rtnetlink::Handle, ifindex: i32) -> Result<()> {
+    link_set(handle, ifindex, false).await
 }
 
 /// Parse nameservers from resolv.conf files.

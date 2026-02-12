@@ -92,15 +92,33 @@ impl SharedStateExt for SharedState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct AppState {
     pub global_state: u32,
     pub connectivity: u32,
     pub devices: HashMap<i32, DeviceInfo>,
     pub nameservers: Vec<String>,
+    pub netlink_handle: Option<rtnetlink::Handle>,
+}
+
+impl std::fmt::Debug for AppState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppState")
+            .field("global_state", &self.global_state)
+            .field("connectivity", &self.connectivity)
+            .field("devices", &self.devices)
+            .field("nameservers", &self.nameservers)
+            .field("netlink_handle", &self.netlink_handle.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 impl AppState {
+    /// Get the shared netlink handle. Panics if not initialized (always set after startup).
+    pub fn handle(&self) -> &rtnetlink::Handle {
+        self.netlink_handle.as_ref().expect("netlink handle not initialized")
+    }
+
     /// Recompute global NM state based on device states and connectivity.
     pub fn recompute_global_state(&mut self) {
         self.global_state = mapping::deduce_global_state(&self.devices);
