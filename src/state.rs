@@ -9,32 +9,11 @@ use crate::mapping;
 
 const NM_PREFIX: &str = "/org/freedesktop/NetworkManager";
 
+const NMLINKD_UUID_NAMESPACE: uuid::Uuid = uuid::uuid!("90bb69d5-2a09-40fc-96b5-3c0e34f9809c");
+
 /// Generate a stable UUID for a connection based on interface name.
 pub fn connection_uuid(iface_name: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut h1 = DefaultHasher::new();
-    "nmlinkd".hash(&mut h1);
-    iface_name.hash(&mut h1);
-    let hash1 = h1.finish();
-
-    let mut h2 = DefaultHasher::new();
-    "nmlinkd2".hash(&mut h2);
-    iface_name.hash(&mut h2);
-    let hash2 = h2.finish();
-
-    let bytes = [hash1.to_le_bytes(), hash2.to_le_bytes()].concat();
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-        u16::from_le_bytes([bytes[4], bytes[5]]),
-        u16::from_le_bytes([bytes[6], bytes[7]]),
-        u16::from_le_bytes([bytes[8], bytes[9]]),
-        u64::from_le_bytes([
-            bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15], 0, 0
-        ]),
-    )
+    uuid::Uuid::new_v5(&NMLINKD_UUID_NAMESPACE, iface_name.as_bytes()).to_string()
 }
 
 fn nm_path(kind: &str, ifindex: i32) -> OwnedObjectPath {
@@ -108,7 +87,10 @@ impl std::fmt::Debug for AppState {
             .field("connectivity", &self.connectivity)
             .field("devices", &self.devices)
             .field("nameservers", &self.nameservers)
-            .field("netlink_handle", &self.netlink_handle.as_ref().map(|_| "..."))
+            .field(
+                "netlink_handle",
+                &self.netlink_handle.as_ref().map(|_| "..."),
+            )
             .finish()
     }
 }
@@ -116,7 +98,9 @@ impl std::fmt::Debug for AppState {
 impl AppState {
     /// Get the shared netlink handle. Panics if not initialized (always set after startup).
     pub fn handle(&self) -> &rtnetlink::Handle {
-        self.netlink_handle.as_ref().expect("netlink handle not initialized")
+        self.netlink_handle
+            .as_ref()
+            .expect("netlink handle not initialized")
     }
 
     /// Recompute global NM state based on device states and connectivity.
