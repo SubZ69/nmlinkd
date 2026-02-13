@@ -11,6 +11,7 @@ BusName=org.freedesktop.NetworkManager
 ExecStart=/usr/bin/nmlinkd
 Restart=always
 RestartSec=5
+CapabilityBoundingSet=CAP_NET_ADMIN
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
