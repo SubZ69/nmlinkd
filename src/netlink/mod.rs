@@ -36,6 +36,7 @@ pub fn device_from_link_msg(msg: &LinkMessage) -> Option<DeviceInfo> {
     if let Some(m) = mac {
         dev.hw_address = m;
     }
+    dev.link_flags = flags;
     dev.nm_state = mapping::netlink_flags_to_nm_device(flags, false, false);
     Some(dev)
 }

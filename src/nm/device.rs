@@ -32,13 +32,19 @@ impl NmDeviceWired {
     }
 
     #[zbus(property)]
-    fn speed(&self) -> u32 {
-        1000
+    async fn speed(&self) -> u32 {
+        self.state
+            .with_device(self.ifindex, |d| d.speed())
+            .await
+            .unwrap_or(0)
     }
 
     #[zbus(property)]
-    fn carrier(&self) -> bool {
-        true
+    async fn carrier(&self) -> bool {
+        self.state
+            .with_device(self.ifindex, |d| d.carrier())
+            .await
+            .unwrap_or(false)
     }
 }
 

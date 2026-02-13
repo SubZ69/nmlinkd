@@ -116,6 +116,7 @@ pub struct DeviceInfo {
     pub name: String,
     pub nm_state: u32,
     pub hw_address: String,
+    pub link_flags: u32,
     pub ipv4_addrs: Vec<AddrInfo<Ipv4Addr>>,
     pub ipv6_addrs: Vec<AddrInfo<Ipv6Addr>>,
     pub gateway4: Option<Ipv4Addr>,
@@ -129,11 +130,29 @@ impl DeviceInfo {
             name,
             nm_state: mapping::nm_device_state::UNKNOWN,
             hw_address: String::new(),
+            link_flags: 0,
             ipv4_addrs: Vec::new(),
             ipv6_addrs: Vec::new(),
             gateway4: None,
             gateway6: None,
         }
+    }
+
+    pub fn carrier(&self) -> bool {
+        use crate::mapping::netlink_flags;
+        (self.link_flags & netlink_flags::IFF_RUNNING) != 0
+            || (self.link_flags & netlink_flags::IFF_LOWER_UP) != 0
+    }
+
+    pub fn speed(&self) -> u32 {
+        if !self.carrier() {
+            return 0;
+        }
+        std::fs::read_to_string(format!("/sys/class/net/{}/speed", self.name))
+            .ok()
+            .and_then(|s| s.trim().parse::<i32>().ok())
+            .map(|v| if v < 0 { 0 } else { v as u32 })
+            .unwrap_or(0)
     }
 
     fn has_ip_address(&self) -> bool {
@@ -167,6 +186,7 @@ impl DeviceInfo {
     /// Update device state when link flags change.
     /// Returns (new_state, old_state) if state changed, None otherwise.
     pub fn update_state_on_link_change(&mut self, flags: u32) -> Option<(u32, u32)> {
+        self.link_flags = flags;
         let old_state = self.nm_state;
         let has_ipv4 = !self.ipv4_addrs.is_empty();
         let has_ipv6 = !self.ipv6_addrs.is_empty();
