@@ -228,24 +228,6 @@ async fn handle_new_link(
     link_msg: &LinkMessage,
 ) -> std::result::Result<(), ()> {
     let ifindex = link_msg.header.index as i32;
-    let mut name = None;
-    let mut mac = None;
-    for attr in &link_msg.attributes {
-        match attr {
-            LinkAttribute::IfName(n) => name = Some(n.clone()),
-            LinkAttribute::Address(bytes) => {
-                mac = Some(queries::format_mac(bytes));
-            }
-            _ => {}
-        }
-    }
-
-    if let Some(ref iface_name) = name
-        && super::should_ignore_interface(iface_name)
-    {
-        return Err(());
-    }
-
     let flags = link_msg.header.flags.bits();
 
     let is_new_device = {
@@ -254,17 +236,8 @@ async fn handle_new_link(
     };
 
     if is_new_device {
-        let Some(iface_name) = name else {
-            return Ok(());
-        };
-
-        info!(ifindex, iface = %iface_name, "new device detected");
-
-        let mut dev = crate::state::DeviceInfo::new(ifindex, iface_name.clone());
-        if let Some(m) = mac {
-            dev.hw_address = m;
-        }
-        dev.nm_state = mapping::netlink_flags_to_nm_device(flags, false, false);
+        let dev = super::device_from_link_msg(link_msg).ok_or(())?;
+        info!(ifindex, iface = %dev.name, "new device detected");
 
         {
             let mut state = shared.write().await;
@@ -292,6 +265,11 @@ async fn handle_new_link(
 
         nm::signals::notify_device_added(nm_conn, ifindex).await;
     } else {
+        let mac = link_msg.attributes.iter().find_map(|attr| match attr {
+            LinkAttribute::Address(bytes) => Some(queries::format_mac(bytes)),
+            _ => None,
+        });
+
         let state_change = {
             let mut state = shared.write().await;
             if let Some(dev) = state.devices.get_mut(&ifindex) {
