@@ -171,13 +171,19 @@ impl NmManager {
 
 impl NmManager {
     async fn resolve_device_ifindex(&self, device: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
+        let ifindex: i32 = device
+            .rsplit('/')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| zbus::fdo::Error::UnknownObject(format!("No device at {device}")))?;
         let state = self.state.read().await;
-        state
-            .devices
-            .values()
-            .find(|d| state::device_path(d.ifindex) == *device)
-            .map(|d| d.ifindex)
-            .ok_or_else(|| zbus::fdo::Error::UnknownObject(format!("No device at {device}")))
+        if state.devices.contains_key(&ifindex) {
+            Ok(ifindex)
+        } else {
+            Err(zbus::fdo::Error::UnknownObject(format!(
+                "No device at {device}"
+            )))
+        }
     }
 
     async fn device_paths(&self) -> Vec<OwnedObjectPath> {
