@@ -67,6 +67,8 @@ fn accumulate(msg: &RouteNetlinkMessage, pending: &mut PendingEvents) {
 
 /// Run the event loop: listen for netlink events.
 pub async fn run(nm_conn: Connection, shared: SharedState) -> Result<()> {
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+
     tokio::select! {
         result = watch_netlink(nm_conn, shared) => {
             match result {
@@ -76,6 +78,9 @@ pub async fn run(nm_conn: Connection, shared: SharedState) -> Result<()> {
         }
         _ = tokio::signal::ctrl_c() => {
             info!("received SIGINT, shutting down");
+        }
+        _ = sigterm.recv() => {
+            info!("received SIGTERM, shutting down");
         }
     }
 
