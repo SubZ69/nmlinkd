@@ -17,6 +17,10 @@ impl NmSettings {
             .collect()
     }
 
+    async fn load_connections(&self, _filenames: Vec<String>) -> (bool, Vec<String>) {
+        (true, Vec::new())
+    }
+
     #[zbus(property)]
     async fn connections(&self) -> Vec<OwnedObjectPath> {
         self.list_connections().await

@@ -71,6 +71,10 @@ impl NmManager {
         self.device_paths().await
     }
 
+    async fn get_all_devices(&self) -> Vec<OwnedObjectPath> {
+        self.device_paths().await
+    }
+
     async fn get_permissions(&self) -> HashMap<String, String> {
         let mut perms = HashMap::new();
         perms.insert(
