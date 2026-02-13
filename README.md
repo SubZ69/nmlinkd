@@ -68,6 +68,7 @@ It translates these into NetworkManager D-Bus API signals and properties that de
 
 - **Read-only**: Cannot create or edit connections from Settings (network config lives in files/tools)
 - **No VPN management**: VPN interfaces (WireGuard, OpenVPN) are filtered out. NetworkManager's VPN API requires active connection management beyond the scope of a read-only bridge.
+- **Wi-Fi shown as wired**: Wi-Fi interfaces (e.g. managed by iwd) are visible but appear as ethernet devices. Wi-Fi-specific features (SSID, signal strength, access point scanning) are not implemented.
 
 ## License
 
