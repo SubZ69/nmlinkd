@@ -1,12 +1,15 @@
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
+
 use futures::stream::StreamExt;
 use netlink_packet_core::NetlinkPayload;
 use netlink_packet_route::RouteNetlinkMessage;
-use netlink_packet_route::address::AddressMessage;
 use netlink_packet_route::link::{LinkAttribute, LinkMessage};
 use netlink_sys::AsyncSocket;
 use rtnetlink::constants::{
     RTMGRP_IPV4_IFADDR, RTMGRP_IPV4_ROUTE, RTMGRP_IPV6_IFADDR, RTMGRP_IPV6_ROUTE, RTMGRP_LINK,
 };
+use tokio::time::{Instant, sleep_until};
 use tracing::{debug, info, warn};
 use zbus::Connection;
 
@@ -16,6 +19,51 @@ use crate::nm;
 use crate::state::SharedState;
 
 use super::queries;
+
+const DEBOUNCE_DURATION: Duration = Duration::from_millis(50);
+
+/// Accumulated netlink events during a debounce window.
+#[derive(Default)]
+struct PendingEvents {
+    /// ifindexes that received NewAddress/DelAddress events.
+    address_changed: HashSet<i32>,
+    /// Whether any NewRoute/DelRoute was received.
+    routes_changed: bool,
+    /// NewLink messages, keyed by ifindex (last message wins for flag updates).
+    new_links: HashMap<i32, LinkMessage>,
+    /// DelLink messages, keyed by ifindex.
+    del_links: HashMap<i32, LinkMessage>,
+}
+
+impl PendingEvents {
+    fn is_empty(&self) -> bool {
+        self.address_changed.is_empty()
+            && !self.routes_changed
+            && self.new_links.is_empty()
+            && self.del_links.is_empty()
+    }
+}
+
+/// Dispatch a netlink message into the pending events accumulator.
+fn accumulate(msg: &RouteNetlinkMessage, pending: &mut PendingEvents) {
+    match msg {
+        RouteNetlinkMessage::NewAddress(addr_msg) | RouteNetlinkMessage::DelAddress(addr_msg) => {
+            pending.address_changed.insert(addr_msg.header.index as i32);
+        }
+        RouteNetlinkMessage::NewRoute(_) | RouteNetlinkMessage::DelRoute(_) => {
+            pending.routes_changed = true;
+        }
+        RouteNetlinkMessage::NewLink(link_msg) => {
+            let ifindex = link_msg.header.index as i32;
+            pending.new_links.insert(ifindex, link_msg.clone());
+        }
+        RouteNetlinkMessage::DelLink(link_msg) => {
+            let ifindex = link_msg.header.index as i32;
+            pending.del_links.insert(ifindex, link_msg.clone());
+        }
+        _ => {}
+    }
+}
 
 /// Run the event loop: listen for netlink events.
 pub async fn run(nm_conn: Connection, shared: SharedState) -> Result<()> {
@@ -34,7 +82,7 @@ pub async fn run(nm_conn: Connection, shared: SharedState) -> Result<()> {
     Ok(())
 }
 
-/// Watch for netlink events (address/route/link changes).
+/// Watch for netlink events (address/route/link changes) with debouncing.
 async fn watch_netlink(nm_conn: Connection, shared: SharedState) -> Result<()> {
     let (mut conn, _handle, mut messages) = rtnetlink::new_connection()?;
 
@@ -51,90 +99,117 @@ async fn watch_netlink(nm_conn: Connection, shared: SharedState) -> Result<()> {
 
     debug!("netlink watcher started, groups mask: 0x{:x}", mgroup_flags);
 
-    while let Some((msg, _)) = messages.next().await {
-        let NetlinkPayload::InnerMessage(inner) = msg.payload else {
-            continue;
+    loop {
+        let Some((msg, _)) = messages.next().await else {
+            break;
         };
 
-        debug!("netlink message received: {:?}", inner);
+        let mut pending = PendingEvents::default();
 
-        match &inner {
-            RouteNetlinkMessage::NewAddress(addr_msg)
-            | RouteNetlinkMessage::DelAddress(addr_msg) => {
-                handle_address_change(&nm_conn, &shared, addr_msg).await;
-            }
-            RouteNetlinkMessage::NewRoute(_) | RouteNetlinkMessage::DelRoute(_) => {
-                handle_route_change(&nm_conn, &shared).await;
-            }
-            RouteNetlinkMessage::NewLink(link_msg) => {
-                if handle_new_link(&nm_conn, &shared, link_msg).await.is_err() {
-                    continue;
+        if let NetlinkPayload::InnerMessage(inner) = msg.payload {
+            debug!("netlink message received: {:?}", inner);
+            accumulate(&inner, &mut pending);
+        }
+
+        let deadline = Instant::now() + DEBOUNCE_DURATION;
+        loop {
+            tokio::select! {
+                biased;
+                Some((msg, _)) = messages.next() => {
+                    if let NetlinkPayload::InnerMessage(inner) = msg.payload {
+                        debug!("netlink message received: {:?}", inner);
+                        accumulate(&inner, &mut pending);
+                    }
                 }
+                () = sleep_until(deadline) => break,
             }
-            RouteNetlinkMessage::DelLink(link_msg) => {
-                handle_del_link(&nm_conn, &shared, link_msg).await;
-            }
-            _ => {}
+        }
+
+        if !pending.is_empty() {
+            process_batch(&nm_conn, &shared, pending).await;
         }
     }
 
     Ok(())
 }
 
-/// Handle NewAddress / DelAddress: reload IPs, update device state, emit signals.
-async fn handle_address_change(
-    nm_conn: &Connection,
-    shared: &SharedState,
-    addr_msg: &AddressMessage,
-) {
-    let ifindex = addr_msg.header.index as i32;
-    let handle = shared.read().await.handle().clone();
+/// Process a batch of accumulated netlink events.
+///
+/// Order: DelLink → NewLink → Addresses → Routes, then emit D-Bus signals.
+async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: PendingEvents) {
+    debug!(
+        del_links = pending.del_links.len(),
+        new_links = pending.new_links.len(),
+        address_changed = pending.address_changed.len(),
+        routes_changed = pending.routes_changed,
+        "processing debounced batch"
+    );
 
-    queries::reload_addresses_for(&handle, ifindex, shared).await;
-    queries::reload_nameservers(shared).await;
+    for link_msg in pending.del_links.values() {
+        handle_del_link(nm_conn, shared, link_msg).await;
+    }
 
-    let state_change = {
-        let mut state = shared.write().await;
-        state
-            .devices
-            .get_mut(&ifindex)
-            .and_then(|dev| dev.update_state_on_ip_change())
-            .map(|(new_state, old_state)| {
-                let old_global = state.global_state;
-                state.recompute_global_state();
-                (new_state, old_state, state.global_state, old_global)
-            })
-    };
+    for link_msg in pending.new_links.values() {
+        let _ = handle_new_link(nm_conn, shared, link_msg).await;
+    }
 
-    nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
-    nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
+    if !pending.address_changed.is_empty() {
+        let handle = shared.read().await.handle().clone();
+        for &ifindex in &pending.address_changed {
+            queries::reload_addresses_for(&handle, ifindex, shared).await;
+        }
+        queries::reload_nameservers(shared).await;
 
-    if let Some((new_state, old_state, new_global, old_global)) = state_change {
-        nm::signals::notify_device_state_changed(nm_conn, ifindex, new_state, old_state).await;
+        let (device_changes, old_global, new_global) = {
+            let mut state = shared.write().await;
+            let old_global = state.global_state;
+            let changes: Vec<_> = pending
+                .address_changed
+                .iter()
+                .filter_map(|&ifindex| {
+                    state
+                        .devices
+                        .get_mut(&ifindex)
+                        .and_then(|dev| dev.update_state_on_ip_change())
+                        .map(|(new_state, old_state)| (ifindex, new_state, old_state))
+                })
+                .collect();
+            state.recompute_global_state();
+            (changes, old_global, state.global_state)
+        };
+
+        for &ifindex in &pending.address_changed {
+            nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
+            nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
+        }
+
+        for (ifindex, new_state, old_state) in device_changes {
+            nm::signals::notify_device_state_changed(nm_conn, ifindex, new_state, old_state).await;
+        }
+
         if old_global != new_global {
             nm::signals::notify_global_state_changed(nm_conn, shared, new_global).await;
         }
     }
-}
 
-/// Handle NewRoute / DelRoute: reload gateways, recompute global state, emit signals.
-async fn handle_route_change(nm_conn: &Connection, shared: &SharedState) {
-    let handle = shared.read().await.handle().clone();
-    queries::reload_gateways(&handle, shared).await;
-    let global_state = {
-        let mut state = shared.write().await;
-        state.recompute_global_state();
-        state.global_state
-    };
-    nm::signals::notify_global_state_changed(nm_conn, shared, global_state).await;
+    if pending.routes_changed {
+        let handle = shared.read().await.handle().clone();
+        queries::reload_gateways(&handle, shared).await;
+        let global_state = {
+            let mut state = shared.write().await;
+            state.recompute_global_state();
+            state.global_state
+        };
+        nm::signals::notify_global_state_changed(nm_conn, shared, global_state).await;
 
-    let ifindexes: Vec<i32> = {
-        let st = shared.read().await;
-        st.devices.keys().copied().collect()
-    };
-    for ifindex in ifindexes {
-        nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
-        nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
+        let ifindexes: Vec<i32> = {
+            let st = shared.read().await;
+            st.devices.keys().copied().collect()
+        };
+        for ifindex in ifindexes {
+            nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
+            nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
+        }
     }
 }
 
