@@ -20,38 +20,52 @@ pub fn format_mac(bytes: &[u8]) -> String {
         .join(":")
 }
 
+/// Query IP addresses for a single interface from netlink.
+async fn query_addresses(
+    handle: &rtnetlink::Handle,
+    ifindex: i32,
+) -> (Vec<AddrInfo<Ipv4Addr>>, Vec<AddrInfo<Ipv6Addr>>) {
+    let mut ipv4 = Vec::new();
+    let mut ipv6 = Vec::new();
+    let mut addrs = handle
+        .address()
+        .get()
+        .set_link_index_filter(ifindex as u32)
+        .execute();
+    while let Ok(Some(msg)) = addrs.try_next().await {
+        let prefix_len = msg.header.prefix_len;
+        for attr in &msg.attributes {
+            match attr {
+                AddressAttribute::Address(IpAddr::V4(v4)) => {
+                    ipv4.push(AddrInfo {
+                        address: *v4,
+                        prefix_len,
+                    });
+                }
+                AddressAttribute::Address(IpAddr::V6(v6)) => {
+                    ipv6.push(AddrInfo {
+                        address: *v6,
+                        prefix_len,
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+    (ipv4, ipv6)
+}
+
 /// Load IP addresses and default gateways into the shared state.
-pub async fn load_initial_addresses(handle: &rtnetlink::Handle, shared: &SharedState) -> Result<()> {
+pub async fn load_initial_addresses(
+    handle: &rtnetlink::Handle,
+    shared: &SharedState,
+) -> Result<()> {
     let state = shared.read().await;
     let ifindexes: Vec<i32> = state.devices.keys().copied().collect();
     drop(state);
 
     for ifindex in ifindexes {
-        let idx = ifindex as u32;
-
-        let mut ipv4 = Vec::new();
-        let mut ipv6 = Vec::new();
-        let mut addrs = handle.address().get().set_link_index_filter(idx).execute();
-        while let Some(msg) = addrs.try_next().await? {
-            let prefix_len = msg.header.prefix_len;
-            for attr in &msg.attributes {
-                match attr {
-                    AddressAttribute::Address(IpAddr::V4(v4)) => {
-                        ipv4.push(AddrInfo {
-                            address: *v4,
-                            prefix_len,
-                        });
-                    }
-                    AddressAttribute::Address(IpAddr::V6(v6)) => {
-                        ipv6.push(AddrInfo {
-                            address: *v6,
-                            prefix_len,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-        }
+        let (ipv4, ipv6) = query_addresses(handle, ifindex).await;
         let mut state = shared.write().await;
         if let Some(dev) = state.devices.get_mut(&ifindex) {
             debug!(iface = %dev.name, ipv4 = ipv4.len(), ipv6 = ipv6.len(), "loaded addresses");
@@ -127,36 +141,7 @@ fn parse_default_gateway(
 
 /// Reload IP addresses for a single interface.
 pub async fn reload_addresses_for(handle: &rtnetlink::Handle, ifindex: i32, shared: &SharedState) {
-    let mut ipv4 = Vec::new();
-    let mut ipv6 = Vec::new();
-
-    let mut addrs = handle
-        .address()
-        .get()
-        .set_link_index_filter(ifindex as u32)
-        .execute();
-
-    while let Ok(Some(msg)) = addrs.try_next().await {
-        let prefix_len = msg.header.prefix_len;
-        for attr in &msg.attributes {
-            match attr {
-                AddressAttribute::Address(IpAddr::V4(v4)) => {
-                    ipv4.push(AddrInfo {
-                        address: *v4,
-                        prefix_len,
-                    });
-                }
-                AddressAttribute::Address(IpAddr::V6(v6)) => {
-                    ipv6.push(AddrInfo {
-                        address: *v6,
-                        prefix_len,
-                    });
-                }
-                _ => {}
-            }
-        }
-    }
-
+    let (ipv4, ipv6) = query_addresses(handle, ifindex).await;
     let mut state = shared.write().await;
     if let Some(dev) = state.devices.get_mut(&ifindex) {
         dev.ipv4_addrs = ipv4;
