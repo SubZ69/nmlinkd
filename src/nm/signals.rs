@@ -10,8 +10,6 @@ use crate::state::{self, SharedState};
 const NM_IFACE: &str = "org.freedesktop.NetworkManager";
 const NM_DEVICE_IFACE: &str = "org.freedesktop.NetworkManager.Device";
 const NM_AC_IFACE: &str = "org.freedesktop.NetworkManager.Connection.Active";
-const NM_IP4_CONFIG_IFACE: &str = "org.freedesktop.NetworkManager.IP4Config";
-const NM_IP6_CONFIG_IFACE: &str = "org.freedesktop.NetworkManager.IP6Config";
 
 /// Emit a PropertiesChanged signal with a mix of changed and invalidated properties.
 async fn emit_properties_changed(
@@ -168,23 +166,22 @@ pub async fn notify_device_state_changed(
     }
 }
 
-/// Notify D-Bus clients that IP4Config properties changed (addresses, gateway, DNS).
-pub async fn notify_ip4_config_changed(nm_conn: &Connection, ifindex: i32) {
-    let path = state::ip4_config_path(ifindex);
-    if let Ok(obj_path) = ObjectPath::try_from(path.as_str()) {
-        let changed: HashMap<&str, Value> = HashMap::new();
-        let invalidated = &["AddressData", "Gateway", "NameserverData"];
-        emit_properties_changed(nm_conn, obj_path, NM_IP4_CONFIG_IFACE, changed, invalidated).await;
-    }
-}
-
-/// Notify D-Bus clients that IP6Config properties changed (addresses, gateway, DNS).
-pub async fn notify_ip6_config_changed(nm_conn: &Connection, ifindex: i32) {
-    let path = state::ip6_config_path(ifindex);
-    if let Ok(obj_path) = ObjectPath::try_from(path.as_str()) {
-        let changed: HashMap<&str, Value> = HashMap::new();
-        let invalidated = &["AddressData", "Gateway", "Nameservers"];
-        emit_properties_changed(nm_conn, obj_path, NM_IP6_CONFIG_IFACE, changed, invalidated).await;
+/// Notify D-Bus clients that IP config changed on a device.
+/// Emits PropertiesChanged on the Device with Ip4Config/Ip6Config paths,
+/// which triggers networkmanager-qt to invalidate its cache and re-read.
+pub async fn notify_device_ip_config_changed(nm_conn: &Connection, ifindex: i32) {
+    let dev_path = state::device_path(ifindex);
+    if let Ok(path) = ObjectPath::try_from(dev_path.as_str()) {
+        let mut changed: HashMap<&str, Value> = HashMap::new();
+        changed.insert(
+            "Ip4Config",
+            Value::ObjectPath(state::ip4_config_path(ifindex).into()),
+        );
+        changed.insert(
+            "Ip6Config",
+            Value::ObjectPath(state::ip6_config_path(ifindex).into()),
+        );
+        emit_properties_changed(nm_conn, path, NM_DEVICE_IFACE, changed, &[]).await;
     }
 }
 

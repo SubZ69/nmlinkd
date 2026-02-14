@@ -214,8 +214,7 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
     }
 
     for ifindex in ip_config_notify {
-        nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
-        nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
+        nm::signals::notify_device_ip_config_changed(nm_conn, ifindex).await;
     }
 }
 
