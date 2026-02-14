@@ -159,6 +159,10 @@ impl DeviceInfo {
         !self.ipv4_addrs.is_empty() || !self.ipv6_addrs.is_empty()
     }
 
+    pub fn has_gateway(&self) -> bool {
+        self.gateway4.is_some() || self.gateway6.is_some()
+    }
+
     /// Update device state when IP addresses change.
     /// Returns (new_state, old_state) if state changed, None otherwise.
     pub fn update_state_on_ip_change(&mut self) -> Option<(u32, u32)> {

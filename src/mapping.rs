@@ -51,7 +51,7 @@ pub fn deduce_global_state(
         let has_ip = !dev.ipv4_addrs.is_empty() || !dev.ipv6_addrs.is_empty();
         if has_ip {
             has_local = true;
-            if dev.gateway4.is_some() || dev.gateway6.is_some() {
+            if dev.has_gateway() {
                 return nm_state::CONNECTED_GLOBAL;
             }
         }

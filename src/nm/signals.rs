@@ -68,10 +68,7 @@ pub async fn notify_global_state_changed(
         let primary: OwnedObjectPath = st
             .devices
             .values()
-            .find(|d| {
-                d.nm_state == crate::mapping::nm_device_state::ACTIVATED
-                    && (d.gateway4.is_some() || d.gateway6.is_some())
-            })
+            .find(|d| d.nm_state == crate::mapping::nm_device_state::ACTIVATED && d.has_gateway())
             .map(|d| state::active_connection_path(d.ifindex))
             .unwrap_or_else(state::root_path);
         (st.connectivity, ac, primary)

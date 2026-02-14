@@ -48,9 +48,7 @@ impl NmManager {
     async fn primary_connection(&self) -> OwnedObjectPath {
         let state = self.state.read().await;
         for dev in state.devices.values() {
-            if dev.nm_state >= nm_device_state::ACTIVATED
-                && (dev.gateway4.is_some() || dev.gateway6.is_some())
-            {
+            if dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway() {
                 return state::active_connection_path(dev.ifindex);
             }
         }
@@ -59,7 +57,16 @@ impl NmManager {
 
     #[zbus(property)]
     async fn primary_connection_type(&self) -> String {
-        "802-3-ethernet".to_string()
+        let state = self.state.read().await;
+        let has_primary = state
+            .devices
+            .values()
+            .any(|dev| dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway());
+        if has_primary {
+            "802-3-ethernet".to_string()
+        } else {
+            String::new()
+        }
     }
 
     #[zbus(property)]
