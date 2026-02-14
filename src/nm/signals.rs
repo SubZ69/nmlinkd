@@ -175,19 +175,18 @@ pub async fn notify_device_state_changed(
 pub async fn notify_ip4_config_changed(nm_conn: &Connection, ifindex: i32) {
     let path = state::ip4_config_path(ifindex);
     if let Ok(obj_path) = ObjectPath::try_from(path.as_str()) {
-        // Invalidate all IP config properties to force clients to re-read them
         let changed: HashMap<&str, Value> = HashMap::new();
         let invalidated = &["AddressData", "Gateway", "NameserverData"];
         emit_properties_changed(nm_conn, obj_path, NM_IP4_CONFIG_IFACE, changed, invalidated).await;
     }
 }
 
-/// Notify D-Bus clients that IP6Config properties changed (addresses, gateway).
+/// Notify D-Bus clients that IP6Config properties changed (addresses, gateway, DNS).
 pub async fn notify_ip6_config_changed(nm_conn: &Connection, ifindex: i32) {
     let path = state::ip6_config_path(ifindex);
     if let Ok(obj_path) = ObjectPath::try_from(path.as_str()) {
         let changed: HashMap<&str, Value> = HashMap::new();
-        let invalidated = &["AddressData", "Gateway"];
+        let invalidated = &["AddressData", "Gateway", "Nameservers"];
         emit_properties_changed(nm_conn, obj_path, NM_IP6_CONFIG_IFACE, changed, invalidated).await;
     }
 }
