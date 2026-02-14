@@ -1,57 +1,35 @@
 /// NetworkManager global state (NMState).
-#[allow(dead_code)]
 pub mod nm_state {
-    pub const UNKNOWN: u32 = 0;
-    pub const ASLEEP: u32 = 10;
     pub const DISCONNECTED: u32 = 20;
-    pub const DISCONNECTING: u32 = 30;
-    pub const CONNECTING: u32 = 40;
     pub const CONNECTED_LOCAL: u32 = 50;
-    pub const CONNECTED_SITE: u32 = 60;
     pub const CONNECTED_GLOBAL: u32 = 70;
 }
 
 /// NetworkManager device state (NMDeviceState).
-#[allow(dead_code)]
 pub mod nm_device_state {
     pub const UNKNOWN: u32 = 0;
-    pub const UNMANAGED: u32 = 10;
     pub const UNAVAILABLE: u32 = 20;
     pub const DISCONNECTED: u32 = 30;
-    pub const PREPARE: u32 = 40;
-    pub const CONFIG: u32 = 50;
     pub const IP_CONFIG: u32 = 70;
-    pub const IP_CHECK: u32 = 80;
     pub const ACTIVATED: u32 = 100;
-    pub const DEACTIVATING: u32 = 110;
-    pub const FAILED: u32 = 120;
 }
 
 /// NetworkManager device type (NMDeviceType).
-#[allow(dead_code)]
 pub mod nm_device_type {
-    pub const UNKNOWN: u32 = 0;
     pub const ETHERNET: u32 = 1;
-    pub const LOOPBACK: u32 = 32;
 }
 
 /// NetworkManager connectivity state (NMConnectivityState).
-#[allow(dead_code)]
 pub mod nm_connectivity {
     pub const UNKNOWN: u32 = 0;
     pub const NONE: u32 = 1;
-    pub const PORTAL: u32 = 2;
-    pub const LIMITED: u32 = 3;
     pub const FULL: u32 = 4;
 }
 
 /// NetworkManager active connection state (NMActiveConnectionState).
-#[allow(dead_code)]
 pub mod nm_active_connection_state {
     pub const UNKNOWN: u32 = 0;
-    pub const ACTIVATING: u32 = 1;
     pub const ACTIVATED: u32 = 2;
-    pub const DEACTIVATING: u32 = 3;
     pub const DEACTIVATED: u32 = 4;
 }
 
