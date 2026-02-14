@@ -158,6 +158,8 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
         let _ = handle_new_link(nm_conn, shared, link_msg).await;
     }
 
+    let mut ip_config_notify: HashSet<i32> = HashSet::new();
+
     if !pending.address_changed.is_empty() {
         let handle = shared.read().await.handle().clone();
         for &ifindex in &pending.address_changed {
@@ -183,10 +185,7 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
             (changes, old_global, state.global_state)
         };
 
-        for &ifindex in &pending.address_changed {
-            nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
-            nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
-        }
+        ip_config_notify.extend(&pending.address_changed);
 
         for (ifindex, new_state, old_state) in device_changes {
             nm::signals::notify_device_state_changed(nm_conn, ifindex, new_state, old_state).await;
@@ -211,10 +210,12 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
             let st = shared.read().await;
             st.devices.keys().copied().collect()
         };
-        for ifindex in ifindexes {
-            nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
-            nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
-        }
+        ip_config_notify.extend(ifindexes);
+    }
+
+    for ifindex in ip_config_notify {
+        nm::signals::notify_ip4_config_changed(nm_conn, ifindex).await;
+        nm::signals::notify_ip6_config_changed(nm_conn, ifindex).await;
     }
 }
 
