@@ -114,6 +114,7 @@ impl AppState {
 pub struct DeviceInfo {
     pub ifindex: i32,
     pub name: String,
+    pub device_type: u32,
     pub nm_state: u32,
     pub hw_address: String,
     pub link_flags: u32,
@@ -128,6 +129,7 @@ impl DeviceInfo {
         Self {
             ifindex,
             name,
+            device_type: mapping::nm_device_type::ETHERNET,
             nm_state: mapping::nm_device_state::UNKNOWN,
             hw_address: String::new(),
             link_flags: 0,

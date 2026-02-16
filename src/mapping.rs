@@ -17,6 +17,7 @@ pub mod nm_device_state {
 /// NetworkManager device type (NMDeviceType).
 pub mod nm_device_type {
     pub const ETHERNET: u32 = 1;
+    pub const WIREGUARD: u32 = 29;
 }
 
 /// NetworkManager connectivity state (NMConnectivityState).

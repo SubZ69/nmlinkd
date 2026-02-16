@@ -2,7 +2,7 @@ pub mod monitor;
 pub mod queries;
 
 use futures::TryStreamExt;
-use netlink_packet_route::link::LinkAttribute;
+use netlink_packet_route::link::{InfoKind, LinkAttribute, LinkInfo};
 use tracing::info;
 
 use netlink_packet_route::link::LinkMessage;
@@ -18,23 +18,36 @@ pub fn device_from_link_msg(msg: &LinkMessage) -> Option<DeviceInfo> {
 
     let mut name = None;
     let mut mac = None;
+    let mut is_wireguard = false;
 
     for attr in &msg.attributes {
         match attr {
             LinkAttribute::IfName(n) => name = Some(n.clone()),
             LinkAttribute::Address(bytes) => mac = Some(queries::format_mac(bytes)),
+            LinkAttribute::LinkInfo(infos) => {
+                for info in infos {
+                    if let LinkInfo::Kind(InfoKind::Wireguard) = info {
+                        is_wireguard = true;
+                    }
+                }
+            }
             _ => {}
         }
     }
 
     let iface_name = name?;
-    if should_ignore_interface(&iface_name) {
+
+    // WireGuard interfaces bypass the prefix filter
+    if !is_wireguard && should_ignore_interface(&iface_name) {
         return None;
     }
 
     let mut dev = DeviceInfo::new(ifindex, iface_name);
     if let Some(m) = mac {
         dev.hw_address = m;
+    }
+    if is_wireguard {
+        dev.device_type = mapping::nm_device_type::WIREGUARD;
     }
     dev.link_flags = flags;
     dev.nm_state = mapping::netlink_flags_to_nm_device(flags, false, false);
@@ -50,7 +63,6 @@ pub fn should_ignore_interface(name: &str) -> bool {
         "br-",       // docker bridges
         "virbr",     // libvirt bridges
         "vnet",      // libvirt tap devices
-        "wg",        // WireGuard tunnels
         "tun",       // TUN devices
         "tap",       // TAP devices
         "tailscale", // Tailscale VPN
