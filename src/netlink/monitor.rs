@@ -315,31 +315,33 @@ async fn handle_new_link(
 async fn handle_del_link(nm_conn: &Connection, shared: &SharedState, link_msg: &LinkMessage) {
     let ifindex = link_msg.header.index as i32;
 
-    let device_exists = {
+    let device_type = {
         let state = shared.read().await;
-        state.devices.contains_key(&ifindex)
+        state.devices.get(&ifindex).map(|d| d.device_type)
     };
 
-    if device_exists {
-        info!(ifindex, "device removed");
+    let Some(device_type) = device_type else {
+        return;
+    };
 
-        if let Err(e) = nm::unregister_device(nm_conn, ifindex).await {
-            warn!(ifindex, "failed to unregister device: {e}");
-        }
+    info!(ifindex, "device removed");
 
-        let old_global_state = {
-            let mut state = shared.write().await;
-            let old_global = state.global_state;
-            state.devices.remove(&ifindex);
-            state.recompute_global_state();
-            old_global
-        };
+    if let Err(e) = nm::unregister_device(nm_conn, ifindex, device_type).await {
+        warn!(ifindex, "failed to unregister device: {e}");
+    }
 
-        nm::signals::notify_device_removed(nm_conn, ifindex).await;
+    let old_global_state = {
+        let mut state = shared.write().await;
+        let old_global = state.global_state;
+        state.devices.remove(&ifindex);
+        state.recompute_global_state();
+        old_global
+    };
 
-        let new_global_state = shared.read().await.global_state;
-        if old_global_state != new_global_state {
-            nm::signals::notify_global_state_changed(nm_conn, shared, new_global_state).await;
-        }
+    nm::signals::notify_device_removed(nm_conn, ifindex).await;
+
+    let new_global_state = shared.read().await.global_state;
+    if old_global_state != new_global_state {
+        nm::signals::notify_global_state_changed(nm_conn, shared, new_global_state).await;
     }
 }

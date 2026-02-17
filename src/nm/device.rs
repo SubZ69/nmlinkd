@@ -48,6 +48,28 @@ impl NmDeviceWired {
     }
 }
 
+/// Stub interface — gnome-control-center requires it for NM_IS_DEVICE_WIREGUARD().
+/// Properties left empty: not useful for a read-only bridge.
+pub struct NmDeviceWireGuard;
+
+#[zbus::interface(name = "org.freedesktop.NetworkManager.Device.WireGuard")]
+impl NmDeviceWireGuard {
+    #[zbus(property)]
+    fn public_key(&self) -> Vec<u8> {
+        Vec::new()
+    }
+
+    #[zbus(property)]
+    fn listen_port(&self) -> u16 {
+        0
+    }
+
+    #[zbus(property)]
+    fn fw_mark(&self) -> u32 {
+        0
+    }
+}
+
 #[zbus::interface(name = "org.freedesktop.NetworkManager.Device")]
 impl NmDevice {
     #[zbus(property(emits_changed_signal = "false"))]
@@ -87,7 +109,10 @@ impl NmDevice {
 
     #[zbus(property)]
     async fn device_type(&self) -> u32 {
-        nm_device_type::ETHERNET
+        self.state
+            .with_device(self.ifindex, |d| d.device_type)
+            .await
+            .unwrap_or(nm_device_type::ETHERNET)
     }
 
     #[zbus(property)]

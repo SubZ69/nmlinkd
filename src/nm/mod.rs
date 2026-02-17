@@ -12,10 +12,11 @@ use zbus::connection::Builder;
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::Result;
+use crate::mapping::nm_device_type;
 use crate::state::{self, SharedState};
 
 use active_connection::NmActiveConnection;
-use device::{NmDevice, NmDeviceWired};
+use device::{NmDevice, NmDeviceWireGuard, NmDeviceWired};
 use ip_config::{NmIp4Config, NmIp6Config};
 use manager::NmManager;
 use settings::NmSettings;
@@ -44,12 +45,16 @@ impl DevicePaths {
 /// Build the NM D-Bus server: register all interfaces and claim the bus name.
 pub async fn serve(shared: SharedState) -> Result<Connection> {
     let state = shared.read().await;
-    let ifindexes: Vec<i32> = state.devices.keys().copied().collect();
+    let devices: Vec<(i32, u32)> = state
+        .devices
+        .values()
+        .map(|d| (d.ifindex, d.device_type))
+        .collect();
     drop(state);
 
-    let device_paths: Vec<(i32, DevicePaths)> = ifindexes
+    let device_paths: Vec<(i32, u32, DevicePaths)> = devices
         .iter()
-        .map(|&idx| (idx, DevicePaths::new(idx)))
+        .map(|&(idx, dt)| (idx, dt, DevicePaths::new(idx)))
         .collect();
 
     let mut builder = Builder::system()?
@@ -68,24 +73,30 @@ pub async fn serve(shared: SharedState) -> Result<Connection> {
             },
         )?;
 
-    for (ifindex, p) in &device_paths {
+    for (ifindex, device_type, p) in &device_paths {
         info!(ifindex, path = %p.dev, "registering device");
 
-        builder = builder
-            .serve_at(
-                &p.dev,
-                NmDevice {
-                    ifindex: *ifindex,
-                    state: shared.clone(),
-                },
-            )?
-            .serve_at(
+        builder = builder.serve_at(
+            &p.dev,
+            NmDevice {
+                ifindex: *ifindex,
+                state: shared.clone(),
+            },
+        )?;
+
+        if *device_type == nm_device_type::WIREGUARD {
+            builder = builder.serve_at(&p.dev, NmDeviceWireGuard)?;
+        } else {
+            builder = builder.serve_at(
                 &p.dev,
                 NmDeviceWired {
                     ifindex: *ifindex,
                     state: shared.clone(),
                 },
-            )?
+            )?;
+        }
+
+        builder = builder
             .serve_at(
                 &p.ip4,
                 NmIp4Config {
@@ -130,6 +141,14 @@ pub async fn register_device(conn: &Connection, ifindex: i32, state: SharedState
     let p = DevicePaths::new(ifindex);
     let obj = conn.object_server();
 
+    let device_type = state
+        .read()
+        .await
+        .devices
+        .get(&ifindex)
+        .map(|d| d.device_type)
+        .unwrap_or(nm_device_type::ETHERNET);
+
     info!(ifindex, path = %p.dev, "registering device");
 
     obj.at(
@@ -140,14 +159,19 @@ pub async fn register_device(conn: &Connection, ifindex: i32, state: SharedState
         },
     )
     .await?;
-    obj.at(
-        &p.dev,
-        NmDeviceWired {
-            ifindex,
-            state: state.clone(),
-        },
-    )
-    .await?;
+
+    if device_type == nm_device_type::WIREGUARD {
+        obj.at(&p.dev, NmDeviceWireGuard).await?;
+    } else {
+        obj.at(
+            &p.dev,
+            NmDeviceWired {
+                ifindex,
+                state: state.clone(),
+            },
+        )
+        .await?;
+    }
     obj.at(
         &p.ip4,
         NmIp4Config {
@@ -179,14 +203,18 @@ pub async fn register_device(conn: &Connection, ifindex: i32, state: SharedState
 }
 
 /// Unregister all D-Bus interfaces for a device (hotplug removal).
-pub async fn unregister_device(conn: &Connection, ifindex: i32) -> Result<()> {
+pub async fn unregister_device(conn: &Connection, ifindex: i32, device_type: u32) -> Result<()> {
     let p = DevicePaths::new(ifindex);
     let obj = conn.object_server();
 
     info!(ifindex, path = %p.dev, "unregistering device");
 
     obj.remove::<NmDevice, _>(&p.dev).await?;
-    obj.remove::<NmDeviceWired, _>(&p.dev).await?;
+    if device_type == nm_device_type::WIREGUARD {
+        obj.remove::<NmDeviceWireGuard, _>(&p.dev).await?;
+    } else {
+        obj.remove::<NmDeviceWired, _>(&p.dev).await?;
+    }
     obj.remove::<NmIp4Config, _>(&p.ip4).await?;
     obj.remove::<NmIp6Config, _>(&p.ip6).await?;
     obj.remove::<NmActiveConnection, _>(&p.active).await?;
