@@ -130,11 +130,16 @@ impl NmManager {
 
     async fn activate_connection(
         &self,
-        _connection: OwnedObjectPath,
+        connection: OwnedObjectPath,
         device: OwnedObjectPath,
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<OwnedObjectPath> {
-        let ifindex = self.resolve_device_ifindex(&device).await?;
+        // For VPNs, GNOME passes device="/", resolve via connection path instead
+        let ifindex = if device.as_str() == "/" {
+            self.resolve_ifindex_from_path(&connection).await?
+        } else {
+            self.resolve_device_ifindex(&device).await?
+        };
         let handle = self.state.read().await.handle().clone();
 
         if let Err(e) = queries::link_set_up(&handle, ifindex).await {
@@ -143,6 +148,23 @@ impl NmManager {
         }
 
         Ok(state::active_connection_path(ifindex))
+    }
+
+    async fn deactivate_connection(
+        &self,
+        active_connection: OwnedObjectPath,
+    ) -> zbus::fdo::Result<()> {
+        let ifindex = self.resolve_ifindex_from_path(&active_connection).await?;
+        let handle = self.state.read().await.handle().clone();
+
+        if let Err(e) = queries::link_set_down(&handle, ifindex).await {
+            warn!(ifindex, "deactivate connection failed: {e}");
+            return Err(zbus::fdo::Error::Failed(format!(
+                "Failed to deactivate: {e}"
+            )));
+        }
+
+        Ok(())
     }
 
     async fn get_device_by_ip_iface(&self, iface: &str) -> zbus::fdo::Result<OwnedObjectPath> {
@@ -174,18 +196,24 @@ impl NmManager {
 }
 
 impl NmManager {
+    /// Parse ifindex from a D-Bus path like /org/.../Devices/{ifindex} and validate the device exists.
     async fn resolve_device_ifindex(&self, device: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
-        let ifindex: i32 = device
+        self.resolve_ifindex_from_path(device).await
+    }
+
+    /// Parse ifindex from any NM object path (Devices, ActiveConnection, Settings, etc.).
+    async fn resolve_ifindex_from_path(&self, path: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
+        let ifindex: i32 = path
             .rsplit('/')
             .next()
             .and_then(|s| s.parse().ok())
-            .ok_or_else(|| zbus::fdo::Error::UnknownObject(format!("No device at {device}")))?;
+            .ok_or_else(|| zbus::fdo::Error::UnknownObject(format!("Invalid path {path}")))?;
         let state = self.state.read().await;
         if state.devices.contains_key(&ifindex) {
             Ok(ifindex)
         } else {
             Err(zbus::fdo::Error::UnknownObject(format!(
-                "No device at {device}"
+                "No device for path {path}"
             )))
         }
     }
