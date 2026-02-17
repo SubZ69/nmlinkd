@@ -76,6 +76,15 @@ pub fn global_state_to_connectivity(global_state: u32) -> u32 {
     }
 }
 
+/// Map device type to NM connection type string.
+pub fn device_type_to_connection_type(device_type: u32) -> &'static str {
+    if device_type == nm_device_type::WIREGUARD {
+        "wireguard"
+    } else {
+        "802-3-ethernet"
+    }
+}
+
 /// Map netlink link flags to NM device state.
 pub fn netlink_flags_to_nm_device(flags: u32, has_ipv4: bool, has_ipv6: bool) -> u32 {
     use netlink_flags::*;

@@ -1,7 +1,7 @@
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::mapping::{nm_active_connection_state, nm_device_state};
+use crate::mapping::{self, nm_active_connection_state, nm_device_state};
 use crate::state::{self, SharedState, SharedStateExt};
 
 pub struct NmActiveConnection {
@@ -42,8 +42,13 @@ impl NmActiveConnection {
     }
 
     #[zbus(property)]
-    fn r#type(&self) -> String {
-        "802-3-ethernet".to_string()
+    async fn r#type(&self) -> String {
+        self.state
+            .with_device(self.ifindex, |d| {
+                mapping::device_type_to_connection_type(d.device_type).to_string()
+            })
+            .await
+            .unwrap_or_else(|| "802-3-ethernet".to_string())
     }
 
     #[zbus(property)]

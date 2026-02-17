@@ -4,7 +4,7 @@ use tracing::warn;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::mapping::nm_device_state;
+use crate::mapping::{self, nm_device_state};
 use crate::netlink::queries;
 use crate::state::{self, SharedState};
 
@@ -58,15 +58,12 @@ impl NmManager {
     #[zbus(property)]
     async fn primary_connection_type(&self) -> String {
         let state = self.state.read().await;
-        let has_primary = state
+        state
             .devices
             .values()
-            .any(|dev| dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway());
-        if has_primary {
-            "802-3-ethernet".to_string()
-        } else {
-            String::new()
-        }
+            .find(|dev| dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway())
+            .map(|dev| mapping::device_type_to_connection_type(dev.device_type).to_string())
+            .unwrap_or_default()
     }
 
     #[zbus(property)]
