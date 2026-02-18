@@ -155,7 +155,11 @@ impl NmManager {
         active_connection: OwnedObjectPath,
     ) -> zbus::fdo::Result<()> {
         let ifindex = self.resolve_ifindex_from_path(&active_connection).await?;
-        let handle = self.state.read().await.handle().clone();
+        let handle = {
+            let mut state = self.state.write().await;
+            state.user_disconnect_pending.insert(ifindex);
+            state.handle().clone()
+        };
 
         if let Err(e) = queries::link_set_down(&handle, ifindex).await {
             warn!(ifindex, "deactivate connection failed: {e}");

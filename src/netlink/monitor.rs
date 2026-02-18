@@ -188,7 +188,10 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
         ip_config_notify.extend(&pending.address_changed);
 
         for (ifindex, new_state, old_state) in device_changes {
-            nm::signals::notify_device_state_changed(nm_conn, ifindex, new_state, old_state).await;
+            nm::signals::notify_device_state_changed(
+                nm_conn, shared, ifindex, new_state, old_state,
+            )
+            .await;
         }
 
         if old_global != new_global {
@@ -299,7 +302,10 @@ async fn handle_new_link(
         };
 
         if let Some((new_state, old_state, new_global, old_global)) = state_change {
-            nm::signals::notify_device_state_changed(nm_conn, ifindex, new_state, old_state).await;
+            nm::signals::notify_device_state_changed(
+                nm_conn, shared, ifindex, new_state, old_state,
+            )
+            .await;
 
             if old_global != new_global {
                 debug!("global state changed: {} -> {}", old_global, new_global);

@@ -4,7 +4,10 @@ use tracing::warn;
 use zbus::Connection;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
 
-use crate::mapping::{nm_active_connection_state, nm_device_state};
+use crate::mapping::{
+    nm_active_connection_state, nm_active_connection_state_reason, nm_device_state,
+    nm_device_state_reason,
+};
 use crate::state::{self, SharedState};
 
 const NM_IFACE: &str = "org.freedesktop.NetworkManager";
@@ -92,12 +95,26 @@ pub async fn notify_global_state_changed(
 
 /// Notify D-Bus clients that a device's state changed.
 /// Emits PropertiesChanged + StateChanged signals on Device and ActiveConnection.
+/// Checks `user_disconnect_pending` to send reason=39 (USER_REQUESTED) when appropriate.
 pub async fn notify_device_state_changed(
     nm_conn: &Connection,
+    shared: &SharedState,
     ifindex: i32,
     new_state: u32,
     old_state: u32,
 ) {
+    // Consume user-requested flag if transitioning to a disconnected state
+    let reason = if new_state < old_state {
+        let mut state = shared.write().await;
+        if state.user_disconnect_pending.remove(&ifindex) {
+            nm_device_state_reason::USER_REQUESTED
+        } else {
+            nm_device_state_reason::NONE
+        }
+    } else {
+        nm_device_state_reason::NONE
+    };
+
     let dev_path = state::device_path(ifindex);
     let ac_path = state::active_connection_path(ifindex);
 
@@ -110,7 +127,7 @@ pub async fn notify_device_state_changed(
     if let Ok(path) = ObjectPath::try_from(dev_path.as_str()) {
         let mut changed: HashMap<&str, Value> = HashMap::new();
         changed.insert("State", Value::U32(new_state));
-        changed.insert("StateReason", Value::from((new_state, 0u32)));
+        changed.insert("StateReason", Value::from((new_state, reason)));
         changed.insert(
             "ActiveConnection",
             Value::ObjectPath(active_conn_path.into()),
@@ -126,7 +143,7 @@ pub async fn notify_device_state_changed(
             iface.signal_emitter(),
             new_state,
             old_state,
-            0, // NM_DEVICE_STATE_REASON_NONE
+            reason,
         )
         .await
     {
@@ -144,12 +161,15 @@ pub async fn notify_device_state_changed(
         nm_active_connection_state::DEACTIVATED
     };
 
-    if let Ok(path) = ObjectPath::try_from(ac_path.as_str()) {
-        let mut changed: HashMap<&str, Value> = HashMap::new();
-        changed.insert("State", Value::U32(ac_state));
-        emit_properties_changed(nm_conn, path, NM_AC_IFACE, changed, &[]).await;
-    }
+    // ActiveConnection uses a different reason enum than Device
+    let ac_reason = if reason == nm_device_state_reason::USER_REQUESTED {
+        nm_active_connection_state_reason::USER_DISCONNECTED
+    } else {
+        nm_active_connection_state_reason::UNKNOWN
+    };
 
+    // Emit StateChanged signal befor PropertiesChanged so that libnm has
+    // the reason cached when it processes the property change notification.
     if ac_state != old_ac_state
         && let Ok(iface) = nm_conn
             .object_server()
@@ -158,11 +178,17 @@ pub async fn notify_device_state_changed(
         && let Err(e) = super::active_connection::NmActiveConnection::state_changed(
             iface.signal_emitter(),
             ac_state,
-            0, // reason
+            ac_reason,
         )
         .await
     {
         warn!("failed to emit ActiveConnection.StateChanged: {e}");
+    }
+
+    if let Ok(path) = ObjectPath::try_from(ac_path.as_str()) {
+        let mut changed: HashMap<&str, Value> = HashMap::new();
+        changed.insert("State", Value::U32(ac_state));
+        emit_properties_changed(nm_conn, path, NM_AC_IFACE, changed, &[]).await;
     }
 }
 

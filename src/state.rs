@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
@@ -78,6 +78,8 @@ pub struct AppState {
     pub devices: HashMap<i32, DeviceInfo>,
     pub nameservers: Vec<String>,
     pub netlink_handle: Option<rtnetlink::Handle>,
+    /// ifindexes where disconnect was user-initiated (consumed by signal emission).
+    pub user_disconnect_pending: HashSet<i32>,
 }
 
 impl std::fmt::Debug for AppState {

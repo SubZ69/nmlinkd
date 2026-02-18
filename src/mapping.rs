@@ -27,11 +27,23 @@ pub mod nm_connectivity {
     pub const FULL: u32 = 4;
 }
 
+/// NetworkManager device state reason (NMDeviceStateReason).
+pub mod nm_device_state_reason {
+    pub const NONE: u32 = 0;
+    pub const USER_REQUESTED: u32 = 39;
+}
+
 /// NetworkManager active connection state (NMActiveConnectionState).
 pub mod nm_active_connection_state {
     pub const UNKNOWN: u32 = 0;
     pub const ACTIVATED: u32 = 2;
     pub const DEACTIVATED: u32 = 4;
+}
+
+/// NetworkManager active connection state reason (NMActiveConnectionStateReason).
+pub mod nm_active_connection_state_reason {
+    pub const UNKNOWN: u32 = 0;
+    pub const USER_DISCONNECTED: u32 = 2;
 }
 
 /// Linux netlink interface flags.

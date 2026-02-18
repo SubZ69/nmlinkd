@@ -172,6 +172,7 @@ pub async fn register_device(conn: &Connection, ifindex: i32, state: SharedState
         )
         .await?;
     }
+
     obj.at(
         &p.ip4,
         NmIp4Config {
