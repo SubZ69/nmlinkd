@@ -16,9 +16,7 @@ Many desktop environments rely on NetworkManager's D-Bus API to display network 
 
 nmlinkd solves this by acting as a read-only NetworkManager API server, reading state from the kernel and presenting it in a format desktop environments expect.
 
-| Before | After |
-|:-:|:-:|
-| ![Before](assets/before.png)| ![After](assets/after.png) |
+![Screenshot](assets/screenshot.png)
 
 ## Features
 
@@ -27,8 +25,9 @@ Should work with desktop environments that use the NetworkManager D-Bus API (GNO
 - Network status indicator icon in GNOME Shell / KDE
 - Enable/disable interfaces
 - Connection details
+- WireGuard interfaces (toggle on/off)
 - Hotplug interfaces support
-- D-Bus activated — starts automatically when needed
+- D-Bus activated (starts automatically when needed)
 
 ## Installation
 
@@ -67,7 +66,6 @@ It translates these into NetworkManager D-Bus API signals and properties that de
 ## Limitations
 
 - **Read-only**: Cannot create or edit connections from Settings (network config lives in files/tools)
-- **No VPN management**: VPN interfaces (WireGuard, OpenVPN) are filtered out. NetworkManager's VPN API requires active connection management beyond the scope of a read-only bridge.
 - **Wi-Fi shown as wired**: Wi-Fi interfaces (e.g. managed by iwd) are visible but appear as ethernet devices. Wi-Fi-specific features (SSID, signal strength, access point scanning) are not implemented.
 
 ## License
