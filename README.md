@@ -4,29 +4,27 @@
 [![Release](https://img.shields.io/github/v/release/subz69/nmlinkd)](../../releases)
 [![AUR](https://img.shields.io/aur/version/nmlinkd)](https://aur.archlinux.org/packages/nmlinkd)
 
-NetworkManager D-Bus bridge for netlink-based network stacks.
-
-## Overview
-
-nmlinkd exposes the NetworkManager D-Bus API by reading network state directly from the Linux kernel via netlink. This allows desktop environments to display network status without requiring NetworkManager itself. Works with any network configuration (systemd-networkd, dhcpcd, iwd, manual, etc).
-
-## Why nmlinkd?
-
-Many desktop environments rely on NetworkManager's D-Bus API to display network status. If you prefer a different network manager (systemd-networkd, dhcpcd, iwd) or manual configuration, you lose UI integration.
-
-nmlinkd solves this by acting as a read-only NetworkManager API server, reading state from the kernel and presenting it in a format desktop environments expect.
+**Native GNOME/KDE network indicator for systemd-networkd, iwd, dhcpcd. No NetworkManager required.**
 
 ![Screenshot](assets/screenshot.png)
 
+## Why nmlinkd?
+
+GNOME, KDE Plasma, COSMIC and most Linux desktops display network status by talking to NetworkManager over D-Bus. If you've chosen a different stack (systemd-networkd, dhcpcd, iwd, ifupdown, or manual config), that indicator goes silent.
+
+nmlinkd is a tiny daemon that reads network state directly from the Linux kernel via netlink and re-exposes it through the NetworkManager D-Bus API. Your desktop sees a "NetworkManager", but it's just nmlinkd mirroring whatever the kernel actually has.
+
+Read-only by design: configuration lives in your tools of choice; nmlinkd only reflects the state.
+
 ## Features
 
-Should work with desktop environments that use the NetworkManager D-Bus API (GNOME, KDE Plasma, Cinnamon, Budgie, MATE, COSMIC).
+Works with any DE that consumes the NetworkManager D-Bus API (GNOME, KDE Plasma, Cinnamon, Budgie, MATE, COSMIC).
 
-- Network status indicator icon in GNOME Shell / KDE
-- Enable/disable interfaces
-- Connection details
-- WireGuard interfaces (toggle on/off)
-- Hotplug interfaces support
+- Network status indicator (wired, WireGuard)
+- Enable/disable interfaces from the indicator
+- Connection details panel
+- WireGuard toggle (treated as VPN entry)
+- Hotplug support (USB ethernet adapters, etc.)
 - D-Bus activated (starts automatically when needed)
 
 ## Installation
