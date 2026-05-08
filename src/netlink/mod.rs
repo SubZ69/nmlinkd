@@ -111,10 +111,8 @@ pub async fn load_initial_state(shared: &SharedState) -> Result<()> {
             let has_ipv4 = !dev.ipv4_addrs.is_empty();
             let has_ipv6 = !dev.ipv6_addrs.is_empty();
             // Re-evaluate state with IP info
-            if has_ipv4 || has_ipv6 {
-                if dev.nm_state == mapping::nm_device_state::IP_CONFIG {
-                    dev.nm_state = mapping::nm_device_state::ACTIVATED;
-                }
+            if (has_ipv4 || has_ipv6) && dev.nm_state == mapping::nm_device_state::IP_CONFIG {
+                dev.nm_state = mapping::nm_device_state::ACTIVATED;
             }
         }
 

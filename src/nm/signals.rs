@@ -221,7 +221,7 @@ pub async fn notify_device_added(nm_conn: &Connection, ifindex: i32) {
             .interface::<_, super::manager::NmManager>(path)
             .await
         && let Err(e) =
-            super::manager::NmManager::device_added(iface.signal_emitter(), dev_path.into()).await
+            super::manager::NmManager::device_added(iface.signal_emitter(), dev_path).await
     {
         warn!("failed to emit Manager.DeviceAdded: {e}");
     }
@@ -237,7 +237,7 @@ pub async fn notify_device_removed(nm_conn: &Connection, ifindex: i32) {
             .interface::<_, super::manager::NmManager>(path)
             .await
         && let Err(e) =
-            super::manager::NmManager::device_removed(iface.signal_emitter(), dev_path.into()).await
+            super::manager::NmManager::device_removed(iface.signal_emitter(), dev_path).await
     {
         warn!("failed to emit Manager.DeviceRemoved: {e}");
     }
