@@ -2,7 +2,7 @@ use zbus::Connection;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::mapping::{nm_device_state, nm_device_type};
+use crate::mapping::nm_device_state;
 use crate::nm::signals;
 use crate::state::{self, SharedState, SharedStateExt};
 
@@ -112,7 +112,7 @@ impl NmDevice {
         self.state
             .with_device(self.ifindex, |d| d.device_type)
             .await
-            .unwrap_or(nm_device_type::ETHERNET)
+            .expect("device exists for active D-Bus path")
     }
 
     #[zbus(property)]

@@ -18,7 +18,7 @@ impl NmSettingsConnection {
             .state
             .with_device(self.ifindex, |d| (d.name.clone(), d.device_type))
             .await
-            .unwrap_or_else(|| (format!("eth{}", self.ifindex), nm_device_type::ETHERNET));
+            .expect("device exists for active D-Bus path");
 
         let conn_type = mapping::device_type_to_connection_type(device_type);
 

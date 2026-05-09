@@ -48,7 +48,7 @@ impl NmActiveConnection {
                 mapping::device_type_to_connection_type(d.device_type).to_string()
             })
             .await
-            .unwrap_or_else(|| "802-3-ethernet".to_string())
+            .expect("device exists for active D-Bus path")
     }
 
     #[zbus(property)]
