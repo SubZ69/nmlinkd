@@ -61,7 +61,11 @@ impl NmActiveConnection {
 
     #[zbus(property)]
     async fn uuid(&self) -> String {
-        let name = self.id().await;
+        let name = self
+            .state
+            .with_device(self.ifindex, |d| d.name.clone())
+            .await
+            .unwrap_or_default();
         state::connection_uuid(&name)
     }
 

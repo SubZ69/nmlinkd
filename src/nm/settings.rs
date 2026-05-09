@@ -13,7 +13,7 @@ impl NmSettings {
         state
             .devices
             .keys()
-            .map(|&idx| self::state::settings_path(idx))
+            .map(|&idx| state::settings_path(idx))
             .collect()
     }
 
