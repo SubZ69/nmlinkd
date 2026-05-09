@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
 use tracing::warn;
+use zbus::Connection;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::mapping::{self, nm_device_state};
 use crate::netlink::queries;
+use crate::nm::signals;
 use crate::state::{self, SharedState};
 
 pub struct NmManager {
@@ -115,9 +117,14 @@ impl NmManager {
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<(OwnedObjectPath, OwnedObjectPath)> {
         let ifindex = self.resolve_device_ifindex(&device).await?;
-        let handle = self.state.read().await.handle().clone();
+        let handle = {
+            let mut state = self.state.write().await;
+            state.user_activate_pending.insert(ifindex);
+            state.handle().clone()
+        };
 
         if let Err(e) = queries::link_set_up(&handle, ifindex).await {
+            self.state.write().await.user_activate_pending.remove(&ifindex);
             warn!(ifindex, "add_and_activate failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
         }
@@ -140,9 +147,14 @@ impl NmManager {
         } else {
             self.resolve_device_ifindex(&device).await?
         };
-        let handle = self.state.read().await.handle().clone();
+        let handle = {
+            let mut state = self.state.write().await;
+            state.user_activate_pending.insert(ifindex);
+            state.handle().clone()
+        };
 
         if let Err(e) = queries::link_set_up(&handle, ifindex).await {
+            self.state.write().await.user_activate_pending.remove(&ifindex);
             warn!(ifindex, "activate connection failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
         }
@@ -152,6 +164,7 @@ impl NmManager {
 
     async fn deactivate_connection(
         &self,
+        #[zbus(connection)] nm_conn: &Connection,
         active_connection: OwnedObjectPath,
     ) -> zbus::fdo::Result<()> {
         let ifindex = self.resolve_ifindex_from_path(&active_connection).await?;
@@ -160,6 +173,8 @@ impl NmManager {
             state.user_disconnect_pending.insert(ifindex);
             state.handle().clone()
         };
+
+        signals::notify_device_deactivating(nm_conn, &self.state, ifindex).await;
 
         if let Err(e) = queries::link_set_down(&handle, ifindex).await {
             warn!(ifindex, "deactivate connection failed: {e}");

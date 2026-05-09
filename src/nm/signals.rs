@@ -103,16 +103,17 @@ pub async fn notify_device_state_changed(
     new_state: u32,
     old_state: u32,
 ) {
-    // Consume user-requested flag if transitioning to a disconnected state
-    let reason = if new_state < old_state {
+    // Keep the flag set across DEACTIVATING; consume it only at DISCONNECTED.
+    let reason = {
         let mut state = shared.write().await;
-        if state.user_disconnect_pending.remove(&ifindex) {
+        if state.user_disconnect_pending.contains(&ifindex) {
+            if new_state <= nm_device_state::DISCONNECTED {
+                state.user_disconnect_pending.remove(&ifindex);
+            }
             nm_device_state_reason::USER_REQUESTED
         } else {
             nm_device_state_reason::NONE
         }
-    } else {
-        nm_device_state_reason::NONE
     };
 
     let dev_path = state::device_path(ifindex);
@@ -190,6 +191,35 @@ pub async fn notify_device_state_changed(
         changed.insert("State", Value::U32(ac_state));
         emit_properties_changed(nm_conn, path, NM_AC_IFACE, changed, &[]).await;
     }
+}
+
+/// Emit the ACTIVATED → DEACTIVATING transition before the link goes down.
+pub async fn notify_device_deactivating(
+    nm_conn: &Connection,
+    shared: &SharedState,
+    ifindex: i32,
+) {
+    let old_state = {
+        let mut state = shared.write().await;
+        let Some(dev) = state.devices.get_mut(&ifindex) else {
+            return;
+        };
+        let old = dev.nm_state;
+        if old == nm_device_state::DEACTIVATING || old <= nm_device_state::DISCONNECTED {
+            return;
+        }
+        dev.nm_state = nm_device_state::DEACTIVATING;
+        old
+    };
+
+    notify_device_state_changed(
+        nm_conn,
+        shared,
+        ifindex,
+        nm_device_state::DEACTIVATING,
+        old_state,
+    )
+    .await;
 }
 
 /// Notify D-Bus clients that IP config changed on a device.

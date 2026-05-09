@@ -1,9 +1,11 @@
 use tracing::warn;
+use zbus::Connection;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::mapping::{nm_device_state, nm_device_type};
 use crate::netlink::queries;
+use crate::nm::signals;
 use crate::state::{self, SharedState, SharedStateExt};
 
 pub struct NmDevice {
@@ -159,12 +161,16 @@ impl NmDevice {
         state::ip6_config_path(self.ifindex)
     }
 
-    async fn disconnect(&self) -> zbus::fdo::Result<()> {
+    async fn disconnect(
+        &self,
+        #[zbus(connection)] nm_conn: &Connection,
+    ) -> zbus::fdo::Result<()> {
         let handle = {
             let mut state = self.state.write().await;
             state.user_disconnect_pending.insert(self.ifindex);
             state.handle().clone()
         };
+        signals::notify_device_deactivating(nm_conn, &self.state, self.ifindex).await;
         if let Err(e) = queries::link_set_down(&handle, self.ifindex).await {
             warn!(ifindex = self.ifindex, "disconnect failed: {e}");
             return Err(zbus::fdo::Error::Failed(format!(

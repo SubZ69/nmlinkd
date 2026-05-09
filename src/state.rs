@@ -78,8 +78,8 @@ pub struct AppState {
     pub devices: HashMap<i32, DeviceInfo>,
     pub nameservers: Vec<String>,
     pub netlink_handle: Option<rtnetlink::Handle>,
-    /// ifindexes where disconnect was user-initiated (consumed by signal emission).
     pub user_disconnect_pending: HashSet<i32>,
+    pub user_activate_pending: HashSet<i32>,
 }
 
 impl std::fmt::Debug for AppState {
@@ -167,8 +167,6 @@ impl DeviceInfo {
         self.gateway4.is_some() || self.gateway6.is_some()
     }
 
-    /// Update device state when IP addresses change.
-    /// Returns (new_state, old_state) if state changed, None otherwise.
     pub fn update_state_on_ip_change(&mut self) -> Option<(u32, u32)> {
         let old_state = self.nm_state;
 
@@ -191,14 +189,21 @@ impl DeviceInfo {
         }
     }
 
-    /// Update device state when link flags change.
-    /// Returns (new_state, old_state) if state changed, None otherwise.
-    pub fn update_state_on_link_change(&mut self, flags: u32) -> Option<(u32, u32)> {
+    /// `user_activating` masks UNAVAILABLE with PREPARE to keep the toggle visible.
+    pub fn update_state_on_link_change(
+        &mut self,
+        flags: u32,
+        user_activating: bool,
+    ) -> Option<(u32, u32)> {
         self.link_flags = flags;
         let old_state = self.nm_state;
         let has_ipv4 = !self.ipv4_addrs.is_empty();
         let has_ipv6 = !self.ipv6_addrs.is_empty();
-        let new_state = mapping::netlink_flags_to_nm_device(flags, has_ipv4, has_ipv6);
+        let mut new_state = mapping::netlink_flags_to_nm_device(flags, has_ipv4, has_ipv6);
+
+        if user_activating && new_state == mapping::nm_device_state::UNAVAILABLE {
+            new_state = mapping::nm_device_state::PREPARE;
+        }
 
         if old_state != new_state {
             self.nm_state = new_state;

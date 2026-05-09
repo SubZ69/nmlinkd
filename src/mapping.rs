@@ -10,8 +10,10 @@ pub mod nm_device_state {
     pub const UNKNOWN: u32 = 0;
     pub const UNAVAILABLE: u32 = 20;
     pub const DISCONNECTED: u32 = 30;
+    pub const PREPARE: u32 = 40;
     pub const IP_CONFIG: u32 = 70;
     pub const ACTIVATED: u32 = 100;
+    pub const DEACTIVATING: u32 = 110;
 }
 
 /// NetworkManager device type (NMDeviceType).

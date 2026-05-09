@@ -275,30 +275,33 @@ async fn handle_new_link(
 
         let state_change = {
             let mut state = shared.write().await;
-            if let Some(dev) = state.devices.get_mut(&ifindex) {
+            let user_activating = state.user_activate_pending.contains(&ifindex);
+
+            let device_update = state.devices.get_mut(&ifindex).and_then(|dev| {
                 if let Some(m) = mac {
                     dev.hw_address = m;
                 }
+                dev.update_state_on_link_change(flags, user_activating)
+                    .map(|(new_state, old_state)| (new_state, old_state, dev.name.clone()))
+            });
 
-                if let Some((new_state, old_state)) = dev.update_state_on_link_change(flags) {
-                    let iface_name = dev.name.clone();
-                    info!(
-                        iface = %iface_name,
-                        old_state,
-                        new_state,
-                        flags,
-                        "link state changed"
-                    );
+            device_update.map(|(new_state, old_state, iface_name)| {
+                info!(
+                    iface = %iface_name,
+                    old_state,
+                    new_state,
+                    flags,
+                    "link state changed"
+                );
 
-                    let old_global = state.global_state;
-                    state.recompute_global_state();
-                    Some((new_state, old_state, state.global_state, old_global))
-                } else {
-                    None
+                if new_state >= mapping::nm_device_state::IP_CONFIG {
+                    state.user_activate_pending.remove(&ifindex);
                 }
-            } else {
-                None
-            }
+
+                let old_global = state.global_state;
+                state.recompute_global_state();
+                (new_state, old_state, state.global_state, old_global)
+            })
         };
 
         if let Some((new_state, old_state, new_global, old_global)) = state_change {
