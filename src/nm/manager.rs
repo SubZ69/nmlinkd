@@ -117,18 +117,7 @@ impl NmManager {
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<(OwnedObjectPath, OwnedObjectPath)> {
         let ifindex = self.resolve_device_ifindex(&device).await?;
-        let handle = {
-            let mut state = self.state.write().await;
-            state.user_activate_pending.insert(ifindex);
-            state.handle().clone()
-        };
-
-        if let Err(e) = queries::link_set_up(&handle, ifindex).await {
-            self.state.write().await.user_activate_pending.remove(&ifindex);
-            warn!(ifindex, "add_and_activate failed: {e}");
-            return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
-        }
-
+        self.start_user_activation(ifindex).await?;
         Ok((
             state::settings_path(ifindex),
             state::active_connection_path(ifindex),
@@ -147,18 +136,7 @@ impl NmManager {
         } else {
             self.resolve_device_ifindex(&device).await?
         };
-        let handle = {
-            let mut state = self.state.write().await;
-            state.user_activate_pending.insert(ifindex);
-            state.handle().clone()
-        };
-
-        if let Err(e) = queries::link_set_up(&handle, ifindex).await {
-            self.state.write().await.user_activate_pending.remove(&ifindex);
-            warn!(ifindex, "activate connection failed: {e}");
-            return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
-        }
-
+        self.start_user_activation(ifindex).await?;
         Ok(state::active_connection_path(ifindex))
     }
 
@@ -218,6 +196,21 @@ impl NmManager {
     /// Parse ifindex from a D-Bus path like /org/.../Devices/{ifindex} and validate the device exists.
     async fn resolve_device_ifindex(&self, device: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
         self.resolve_ifindex_from_path(device).await
+    }
+
+    /// Rolls back `user_activate_pending` on failure to avoid sticking in PREPARE.
+    async fn start_user_activation(&self, ifindex: i32) -> zbus::fdo::Result<()> {
+        let handle = {
+            let mut state = self.state.write().await;
+            state.user_activate_pending.insert(ifindex);
+            state.handle().clone()
+        };
+        if let Err(e) = queries::link_set_up(&handle, ifindex).await {
+            self.state.write().await.user_activate_pending.remove(&ifindex);
+            warn!(ifindex, "activate failed: {e}");
+            return Err(zbus::fdo::Error::Failed(format!("Failed to activate: {e}")));
+        }
+        Ok(())
     }
 
     /// Parse ifindex from any NM object path (Devices, ActiveConnection, Settings, etc.).
