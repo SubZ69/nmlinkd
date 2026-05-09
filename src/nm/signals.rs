@@ -103,17 +103,14 @@ pub async fn notify_device_state_changed(
     new_state: u32,
     old_state: u32,
 ) {
-    // Keep the flag set across DEACTIVATING; consume it only at DISCONNECTED.
-    let reason = {
-        let mut state = shared.write().await;
-        if state.user_disconnect_pending.contains(&ifindex) {
-            if new_state <= nm_device_state::DISCONNECTED {
-                state.user_disconnect_pending.remove(&ifindex);
-            }
-            nm_device_state_reason::USER_REQUESTED
-        } else {
-            nm_device_state_reason::NONE
+    // Keep the flag set across DEACTIVATING; consume it once we land at or below DISCONNECTED.
+    let reason = if shared.read().await.user_disconnect_pending.contains(&ifindex) {
+        if new_state <= nm_device_state::DISCONNECTED {
+            shared.write().await.user_disconnect_pending.remove(&ifindex);
         }
+        nm_device_state_reason::USER_REQUESTED
+    } else {
+        nm_device_state_reason::NONE
     };
 
     let dev_path = state::device_path(ifindex);
@@ -169,7 +166,7 @@ pub async fn notify_device_state_changed(
         nm_active_connection_state_reason::UNKNOWN
     };
 
-    // Emit StateChanged signal befor PropertiesChanged so that libnm has
+    // Emit StateChanged signal before PropertiesChanged so that libnm has
     // the reason cached when it processes the property change notification.
     if ac_state != old_ac_state
         && let Ok(iface) = nm_conn

@@ -116,7 +116,7 @@ impl NmManager {
         device: OwnedObjectPath,
         _specific_object: OwnedObjectPath,
     ) -> zbus::fdo::Result<(OwnedObjectPath, OwnedObjectPath)> {
-        let ifindex = self.resolve_device_ifindex(&device).await?;
+        let ifindex = self.resolve_ifindex_from_path(&device).await?;
         self.start_user_activation(ifindex).await?;
         Ok((
             state::settings_path(ifindex),
@@ -134,7 +134,7 @@ impl NmManager {
         let ifindex = if device.as_str() == "/" {
             self.resolve_ifindex_from_path(&connection).await?
         } else {
-            self.resolve_device_ifindex(&device).await?
+            self.resolve_ifindex_from_path(&device).await?
         };
         self.start_user_activation(ifindex).await?;
         Ok(state::active_connection_path(ifindex))
@@ -193,11 +193,6 @@ impl NmManager {
 }
 
 impl NmManager {
-    /// Parse ifindex from a D-Bus path like /org/.../Devices/{ifindex} and validate the device exists.
-    async fn resolve_device_ifindex(&self, device: &OwnedObjectPath) -> zbus::fdo::Result<i32> {
-        self.resolve_ifindex_from_path(device).await
-    }
-
     /// Rolls back `user_activate_pending` on failure to avoid sticking in PREPARE.
     async fn start_user_activation(&self, ifindex: i32) -> zbus::fdo::Result<()> {
         let handle = {
