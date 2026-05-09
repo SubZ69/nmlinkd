@@ -146,22 +146,7 @@ impl NmManager {
         active_connection: OwnedObjectPath,
     ) -> zbus::fdo::Result<()> {
         let ifindex = self.resolve_ifindex_from_path(&active_connection).await?;
-        let handle = {
-            let mut state = self.state.write().await;
-            state.user_disconnect_pending.insert(ifindex);
-            state.handle().clone()
-        };
-
-        signals::notify_device_deactivating(nm_conn, &self.state, ifindex).await;
-
-        if let Err(e) = queries::link_set_down(&handle, ifindex).await {
-            warn!(ifindex, "deactivate connection failed: {e}");
-            return Err(zbus::fdo::Error::Failed(format!(
-                "Failed to deactivate: {e}"
-            )));
-        }
-
-        Ok(())
+        signals::start_user_deactivation(nm_conn, &self.state, ifindex).await
     }
 
     async fn get_device_by_ip_iface(&self, iface: &str) -> zbus::fdo::Result<OwnedObjectPath> {

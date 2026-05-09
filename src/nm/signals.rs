@@ -8,6 +8,7 @@ use crate::mapping::{
     nm_active_connection_state, nm_active_connection_state_reason, nm_device_state,
     nm_device_state_reason,
 };
+use crate::netlink::queries;
 use crate::state::{self, SharedState};
 
 const NM_IFACE: &str = "org.freedesktop.NetworkManager";
@@ -188,6 +189,27 @@ pub async fn notify_device_state_changed(
         changed.insert("State", Value::U32(ac_state));
         emit_properties_changed(nm_conn, path, NM_AC_IFACE, changed, &[]).await;
     }
+}
+
+/// Mark the device as user-deactivating, emit DEACTIVATING, then bring the link down.
+pub async fn start_user_deactivation(
+    nm_conn: &Connection,
+    shared: &SharedState,
+    ifindex: i32,
+) -> zbus::fdo::Result<()> {
+    let handle = {
+        let mut state = shared.write().await;
+        state.user_disconnect_pending.insert(ifindex);
+        state.handle().clone()
+    };
+    notify_device_deactivating(nm_conn, shared, ifindex).await;
+    if let Err(e) = queries::link_set_down(&handle, ifindex).await {
+        warn!(ifindex, "deactivate failed: {e}");
+        return Err(zbus::fdo::Error::Failed(format!(
+            "Failed to deactivate: {e}"
+        )));
+    }
+    Ok(())
 }
 
 /// Emit the ACTIVATED → DEACTIVATING transition before the link goes down.
