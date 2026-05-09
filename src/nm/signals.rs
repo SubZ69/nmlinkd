@@ -197,12 +197,33 @@ pub async fn start_user_deactivation(
     shared: &SharedState,
     ifindex: i32,
 ) -> zbus::fdo::Result<()> {
-    let handle = {
+    let (handle, transition) = {
         let mut state = shared.write().await;
         state.user_disconnect_pending.insert(ifindex);
-        state.handle().clone()
+        let handle = state.handle().clone();
+        let transition = state.devices.get_mut(&ifindex).and_then(|dev| {
+            let old = dev.nm_state;
+            if old == nm_device_state::DEACTIVATING || old <= nm_device_state::DISCONNECTED {
+                None
+            } else {
+                dev.nm_state = nm_device_state::DEACTIVATING;
+                Some(old)
+            }
+        });
+        (handle, transition)
     };
-    notify_device_deactivating(nm_conn, shared, ifindex).await;
+
+    if let Some(old_state) = transition {
+        notify_device_state_changed(
+            nm_conn,
+            shared,
+            ifindex,
+            nm_device_state::DEACTIVATING,
+            old_state,
+        )
+        .await;
+    }
+
     if let Err(e) = queries::link_set_down(&handle, ifindex).await {
         warn!(ifindex, "deactivate failed: {e}");
         return Err(zbus::fdo::Error::Failed(format!(
@@ -210,35 +231,6 @@ pub async fn start_user_deactivation(
         )));
     }
     Ok(())
-}
-
-/// Emit the ACTIVATED → DEACTIVATING transition before the link goes down.
-pub async fn notify_device_deactivating(
-    nm_conn: &Connection,
-    shared: &SharedState,
-    ifindex: i32,
-) {
-    let old_state = {
-        let mut state = shared.write().await;
-        let Some(dev) = state.devices.get_mut(&ifindex) else {
-            return;
-        };
-        let old = dev.nm_state;
-        if old == nm_device_state::DEACTIVATING || old <= nm_device_state::DISCONNECTED {
-            return;
-        }
-        dev.nm_state = nm_device_state::DEACTIVATING;
-        old
-    };
-
-    notify_device_state_changed(
-        nm_conn,
-        shared,
-        ifindex,
-        nm_device_state::DEACTIVATING,
-        old_state,
-    )
-    .await;
 }
 
 /// Notify D-Bus clients that IP config changed on a device.
