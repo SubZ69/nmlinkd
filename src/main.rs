@@ -1,3 +1,4 @@
+mod connectivity;
 mod mapping;
 mod netlink;
 mod nm;
