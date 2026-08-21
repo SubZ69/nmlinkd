@@ -26,6 +26,8 @@ pub mod nm_device_type {
 pub mod nm_connectivity {
     pub const UNKNOWN: u32 = 0;
     pub const NONE: u32 = 1;
+    pub const LIMITED: u32 = 2;
+    pub const PORTAL: u32 = 3;
     pub const FULL: u32 = 4;
 }
 
@@ -79,14 +81,28 @@ pub fn deduce_global_state(
     }
 }
 
-/// Deduce connectivity from global state.
-/// For a read-only bridge, we assume full connectivity if connected,
-/// since we don't perform actual connectivity checks.
+/// Default connectivity before any HTTP probe has run.
 pub fn global_state_to_connectivity(global_state: u32) -> u32 {
     match global_state {
-        nm_state::CONNECTED_LOCAL..=nm_state::CONNECTED_GLOBAL => nm_connectivity::FULL,
-        nm_state::DISCONNECTED => nm_connectivity::NONE,
+        nm_state::CONNECTED_GLOBAL => nm_connectivity::UNKNOWN,
+        nm_state::CONNECTED_LOCAL | nm_state::DISCONNECTED => nm_connectivity::NONE,
         _ => nm_connectivity::UNKNOWN,
+    }
+}
+
+/// Outcome of an HTTP connectivity probe against the configured check URI.
+pub enum ProbeResult {
+    Full,
+    Portal,
+    Failed,
+}
+
+/// Map an HTTP connectivity probe outcome to `NMConnectivityState`.
+pub fn probe_result_to_connectivity(result: ProbeResult) -> u32 {
+    match result {
+        ProbeResult::Full => nm_connectivity::FULL,
+        ProbeResult::Portal => nm_connectivity::PORTAL,
+        ProbeResult::Failed => nm_connectivity::LIMITED,
     }
 }
 
