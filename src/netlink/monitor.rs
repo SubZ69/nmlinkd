@@ -104,11 +104,7 @@ async fn watch_netlink(nm_conn: Connection, shared: SharedState) -> Result<()> {
 
     debug!("netlink watcher started, groups mask: 0x{:x}", mgroup_flags);
 
-    loop {
-        let Some((msg, _)) = messages.next().await else {
-            break;
-        };
-
+    while let Some((msg, _)) = messages.next().await {
         let mut pending = PendingEvents::default();
 
         if let NetlinkPayload::InnerMessage(inner) = msg.payload {
