@@ -106,9 +106,17 @@ impl AppState {
     }
 
     /// Recompute global NM state based on device states and connectivity.
+    /// Leaves `connectivity` untouched while staying in `CONNECTED_GLOBAL`,
+    /// so an HTTP probe result isn't clobbered by unrelated device/route changes.
     pub fn recompute_global_state(&mut self) {
+        let previous = self.global_state;
         self.global_state = mapping::deduce_global_state(&self.devices);
-        self.connectivity = mapping::global_state_to_connectivity(self.global_state);
+
+        let staying_global = previous == mapping::nm_state::CONNECTED_GLOBAL
+            && self.global_state == mapping::nm_state::CONNECTED_GLOBAL;
+        if !staying_global {
+            self.connectivity = mapping::global_state_to_connectivity(self.global_state);
+        }
     }
 }
 

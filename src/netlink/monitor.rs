@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 use zbus::Connection;
 
 use crate::Result;
+use crate::connectivity;
 use crate::mapping;
 use crate::nm;
 use crate::state::SharedState;
@@ -192,18 +193,21 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
 
         if old_global != new_global {
             nm::signals::notify_global_state_changed(nm_conn, shared, new_global).await;
+            connectivity::trigger_on_global_transition(nm_conn, shared, old_global, new_global);
         }
     }
 
     if pending.routes_changed {
         let handle = shared.read().await.handle().clone();
         queries::reload_gateways(&handle, shared).await;
-        let global_state = {
+        let (old_global, global_state) = {
             let mut state = shared.write().await;
+            let old_global = state.global_state;
             state.recompute_global_state();
-            state.global_state
+            (old_global, state.global_state)
         };
         nm::signals::notify_global_state_changed(nm_conn, shared, global_state).await;
+        connectivity::trigger_on_global_transition(nm_conn, shared, old_global, global_state);
 
         let ifindexes: Vec<i32> = {
             let st = shared.read().await;
@@ -310,6 +314,7 @@ async fn handle_new_link(
                 debug!("global state changed: {} -> {}", old_global, new_global);
             }
             nm::signals::notify_global_state_changed(nm_conn, shared, new_global).await;
+            connectivity::trigger_on_global_transition(nm_conn, shared, old_global, new_global);
         }
     }
 

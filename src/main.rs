@@ -50,6 +50,8 @@ async fn run() -> Result<()> {
     let nm_conn = nm::serve(shared.clone()).await?;
     info!("claimed org.freedesktop.NetworkManager on system bus");
 
+    tokio::spawn(connectivity::run_periodic(nm_conn.clone(), shared.clone()));
+
     // Run netlink event loop
     netlink::monitor::run(nm_conn, shared).await
 }
