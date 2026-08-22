@@ -21,6 +21,7 @@ Read-only by design: configuration lives in your tools of choice; nmlinkd only r
 Works with any DE that consumes the NetworkManager D-Bus API (GNOME, KDE Plasma, Cinnamon, Budgie, MATE, COSMIC).
 
 - Network status indicator (wired, WireGuard)
+- Real internet connectivity detection (captive portals, dead gateways)
 - Enable/disable interfaces from the indicator
 - Connection details panel
 - WireGuard toggle (treated as VPN entry)
