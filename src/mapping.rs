@@ -26,8 +26,8 @@ pub mod nm_device_type {
 pub mod nm_connectivity {
     pub const UNKNOWN: u32 = 0;
     pub const NONE: u32 = 1;
-    pub const LIMITED: u32 = 2;
-    pub const PORTAL: u32 = 3;
+    pub const PORTAL: u32 = 2;
+    pub const LIMITED: u32 = 3;
     pub const FULL: u32 = 4;
 }
 
