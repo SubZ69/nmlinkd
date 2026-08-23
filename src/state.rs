@@ -119,16 +119,12 @@ impl AppState {
         }
     }
 
-    /// The device NM reports as primary: prefers one with a gateway, else any activated device.
+    /// The device NM reports as primary: prefers a gateway, then lowest metric, then ifindex.
     pub fn primary_device(&self) -> Option<&DeviceInfo> {
         self.devices
             .values()
-            .find(|d| d.nm_state == mapping::nm_device_state::ACTIVATED && d.has_gateway())
-            .or_else(|| {
-                self.devices
-                    .values()
-                    .find(|d| d.nm_state == mapping::nm_device_state::ACTIVATED)
-            })
+            .filter(|d| d.nm_state == mapping::nm_device_state::ACTIVATED)
+            .min_by_key(|d| (!d.has_gateway(), d.best_metric(), d.ifindex))
     }
 }
 
@@ -144,6 +140,8 @@ pub struct DeviceInfo {
     pub ipv6_addrs: Vec<AddrInfo<Ipv6Addr>>,
     pub gateway4: Option<Ipv4Addr>,
     pub gateway6: Option<Ipv6Addr>,
+    pub metric4: Option<u32>,
+    pub metric6: Option<u32>,
 }
 
 impl DeviceInfo {
@@ -159,7 +157,18 @@ impl DeviceInfo {
             ipv6_addrs: Vec::new(),
             gateway4: None,
             gateway6: None,
+            metric4: None,
+            metric6: None,
         }
+    }
+
+    /// Lowest (best) default route metric across address families, for primary-device tie-breaking.
+    pub fn best_metric(&self) -> u32 {
+        [self.metric4, self.metric6]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(0)
     }
 
     pub fn carrier(&self) -> bool {

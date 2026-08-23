@@ -85,7 +85,7 @@ pub async fn load_default_gateways(handle: &rtnetlink::Handle, shared: &SharedSt
     let route_msg = RouteMessageBuilder::<Ipv4Addr>::new().build();
     let mut routes = handle.route().get(route_msg).execute();
     while let Some(msg) = routes.try_next().await? {
-        if let Some((gw, idx)) = parse_default_gateway(&msg, |a| match a {
+        if let Some((gw, idx, metric)) = parse_default_gateway(&msg, |a| match a {
             RouteAddress::Inet(ip) => Some(IpAddr::V4(*ip)),
             _ => None,
         }) {
@@ -93,8 +93,9 @@ pub async fn load_default_gateways(handle: &rtnetlink::Handle, shared: &SharedSt
             if let Some(dev) = state.devices.get_mut(&idx)
                 && let IpAddr::V4(v4) = gw
             {
-                debug!(iface = %dev.name, gateway = %v4, "loaded IPv4 default gateway");
+                debug!(iface = %dev.name, gateway = %v4, metric, "loaded IPv4 default gateway");
                 dev.gateway4 = Some(v4);
+                dev.metric4 = Some(metric);
             }
         }
     }
@@ -102,7 +103,7 @@ pub async fn load_default_gateways(handle: &rtnetlink::Handle, shared: &SharedSt
     let route_msg = RouteMessageBuilder::<Ipv6Addr>::new().build();
     let mut routes = handle.route().get(route_msg).execute();
     while let Some(msg) = routes.try_next().await? {
-        if let Some((gw, idx)) = parse_default_gateway(&msg, |a| match a {
+        if let Some((gw, idx, metric)) = parse_default_gateway(&msg, |a| match a {
             RouteAddress::Inet6(ip) => Some(IpAddr::V6(*ip)),
             _ => None,
         }) {
@@ -110,8 +111,9 @@ pub async fn load_default_gateways(handle: &rtnetlink::Handle, shared: &SharedSt
             if let Some(dev) = state.devices.get_mut(&idx)
                 && let IpAddr::V6(v6) = gw
             {
-                debug!(iface = %dev.name, gateway = %v6, "loaded IPv6 default gateway");
+                debug!(iface = %dev.name, gateway = %v6, metric, "loaded IPv6 default gateway");
                 dev.gateway6 = Some(v6);
+                dev.metric6 = Some(metric);
             }
         }
     }
@@ -119,24 +121,27 @@ pub async fn load_default_gateways(handle: &rtnetlink::Handle, shared: &SharedSt
     Ok(())
 }
 
-/// Extract (gateway, ifindex) from a default route message (prefix_len == 0).
+/// Extract (gateway, ifindex, metric) from a default route message (prefix_len == 0).
+/// Metric defaults to 0 (kernel's default priority) when the route doesn't set one.
 fn parse_default_gateway(
     msg: &netlink_packet_route::route::RouteMessage,
     extract_gw: impl Fn(&RouteAddress) -> Option<IpAddr>,
-) -> Option<(IpAddr, i32)> {
+) -> Option<(IpAddr, i32, u32)> {
     if msg.header.destination_prefix_length != 0 {
         return None;
     }
     let mut gateway = None;
     let mut oif = None;
+    let mut metric = 0;
     for attr in &msg.attributes {
         match attr {
             RouteAttribute::Gateway(addr) => gateway = extract_gw(addr),
             RouteAttribute::Oif(idx) => oif = Some(*idx as i32),
+            RouteAttribute::Priority(p) => metric = *p,
             _ => {}
         }
     }
-    gateway.zip(oif)
+    gateway.zip(oif).map(|(gw, idx)| (gw, idx, metric))
 }
 
 /// Reload IP addresses for a single interface.
@@ -150,18 +155,22 @@ pub async fn reload_addresses_for(handle: &rtnetlink::Handle, ifindex: i32, shar
     }
 }
 
-/// Reload default gateways for all devices, returning ifindexes whose gateway changed.
+type GatewaySnapshot = (Option<Ipv4Addr>, Option<Ipv6Addr>, Option<u32>, Option<u32>);
+
+/// Reload default gateways for all devices, returning ifindexes whose gateway or metric changed.
 pub async fn reload_gateways(handle: &rtnetlink::Handle, shared: &SharedState) -> Vec<i32> {
-    let before: std::collections::HashMap<i32, (Option<Ipv4Addr>, Option<Ipv6Addr>)> = {
+    let before: std::collections::HashMap<i32, GatewaySnapshot> = {
         let mut state = shared.write().await;
         let before = state
             .devices
             .values()
-            .map(|d| (d.ifindex, (d.gateway4, d.gateway6)))
+            .map(|d| (d.ifindex, (d.gateway4, d.gateway6, d.metric4, d.metric6)))
             .collect();
         for dev in state.devices.values_mut() {
             dev.gateway4 = None;
             dev.gateway6 = None;
+            dev.metric4 = None;
+            dev.metric6 = None;
         }
         before
     };
@@ -174,7 +183,9 @@ pub async fn reload_gateways(handle: &rtnetlink::Handle, shared: &SharedState) -
     state
         .devices
         .values()
-        .filter(|d| before.get(&d.ifindex) != Some(&(d.gateway4, d.gateway6)))
+        .filter(|d| {
+            before.get(&d.ifindex) != Some(&(d.gateway4, d.gateway6, d.metric4, d.metric6))
+        })
         .map(|d| d.ifindex)
         .collect()
 }
