@@ -118,6 +118,18 @@ impl AppState {
             self.connectivity = mapping::global_state_to_connectivity(self.global_state);
         }
     }
+
+    /// The device NM reports as primary: prefers one with a gateway, else any activated device.
+    pub fn primary_device(&self) -> Option<&DeviceInfo> {
+        self.devices
+            .values()
+            .find(|d| d.nm_state == mapping::nm_device_state::ACTIVATED && d.has_gateway())
+            .or_else(|| {
+                self.devices
+                    .values()
+                    .find(|d| d.nm_state == mapping::nm_device_state::ACTIVATED)
+            })
+    }
 }
 
 #[derive(Debug, Clone)]

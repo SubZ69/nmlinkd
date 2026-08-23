@@ -67,16 +67,8 @@ pub async fn notify_global_state_changed(
             .filter(|d| d.nm_state == crate::mapping::nm_device_state::ACTIVATED)
             .map(|d| state::active_connection_path(d.ifindex))
             .collect();
-        // Fall back to any activated device: NM still reports a primary even without a gateway.
         let primary: OwnedObjectPath = st
-            .devices
-            .values()
-            .find(|d| d.nm_state == crate::mapping::nm_device_state::ACTIVATED && d.has_gateway())
-            .or_else(|| {
-                st.devices
-                    .values()
-                    .find(|d| d.nm_state == crate::mapping::nm_device_state::ACTIVATED)
-            })
+            .primary_device()
             .map(|d| state::active_connection_path(d.ifindex))
             .unwrap_or_else(state::root_path);
         (st.connectivity, ac, primary)

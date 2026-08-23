@@ -49,21 +49,17 @@ impl NmManager {
     #[zbus(property)]
     async fn primary_connection(&self) -> OwnedObjectPath {
         let state = self.state.read().await;
-        for dev in state.devices.values() {
-            if dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway() {
-                return state::active_connection_path(dev.ifindex);
-            }
-        }
-        state::root_path()
+        state
+            .primary_device()
+            .map(|dev| state::active_connection_path(dev.ifindex))
+            .unwrap_or_else(state::root_path)
     }
 
     #[zbus(property)]
     async fn primary_connection_type(&self) -> String {
         let state = self.state.read().await;
         state
-            .devices
-            .values()
-            .find(|dev| dev.nm_state >= nm_device_state::ACTIVATED && dev.has_gateway())
+            .primary_device()
             .map(|dev| mapping::device_type_to_connection_type(dev.device_type).to_string())
             .unwrap_or_default()
     }
