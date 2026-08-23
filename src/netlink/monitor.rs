@@ -199,7 +199,7 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
 
     if pending.routes_changed {
         let handle = shared.read().await.handle().clone();
-        queries::reload_gateways(&handle, shared).await;
+        let changed_gateways = queries::reload_gateways(&handle, shared).await;
         let (old_global, global_state) = {
             let mut state = shared.write().await;
             let old_global = state.global_state;
@@ -209,11 +209,7 @@ async fn process_batch(nm_conn: &Connection, shared: &SharedState, pending: Pend
         nm::signals::notify_global_state_changed(nm_conn, shared, global_state).await;
         connectivity::trigger_on_global_transition(nm_conn, shared, old_global, global_state);
 
-        let ifindexes: Vec<i32> = {
-            let st = shared.read().await;
-            st.devices.keys().copied().collect()
-        };
-        ip_config_notify.extend(ifindexes);
+        ip_config_notify.extend(changed_gateways);
     }
 
     for ifindex in ip_config_notify {

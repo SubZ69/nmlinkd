@@ -150,19 +150,33 @@ pub async fn reload_addresses_for(handle: &rtnetlink::Handle, ifindex: i32, shar
     }
 }
 
-/// Reload default gateways for all devices.
-pub async fn reload_gateways(handle: &rtnetlink::Handle, shared: &SharedState) {
-    {
+/// Reload default gateways for all devices, returning ifindexes whose gateway changed.
+pub async fn reload_gateways(handle: &rtnetlink::Handle, shared: &SharedState) -> Vec<i32> {
+    let before: std::collections::HashMap<i32, (Option<Ipv4Addr>, Option<Ipv6Addr>)> = {
         let mut state = shared.write().await;
+        let before = state
+            .devices
+            .values()
+            .map(|d| (d.ifindex, (d.gateway4, d.gateway6)))
+            .collect();
         for dev in state.devices.values_mut() {
             dev.gateway4 = None;
             dev.gateway6 = None;
         }
-    }
+        before
+    };
 
     if let Err(e) = load_default_gateways(handle, shared).await {
         warn!("failed to reload gateways: {e}");
     }
+
+    let state = shared.read().await;
+    state
+        .devices
+        .values()
+        .filter(|d| before.get(&d.ifindex) != Some(&(d.gateway4, d.gateway6)))
+        .map(|d| d.ifindex)
+        .collect()
 }
 
 /// Set a network interface up or down via rtnetlink.
