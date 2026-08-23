@@ -106,17 +106,28 @@ impl AppState {
     }
 
     /// Recompute global NM state based on device states and connectivity.
-    /// Leaves `connectivity` untouched while staying in `CONNECTED_GLOBAL`,
+    /// Leaves `connectivity` untouched while staying in a gateway tier (`SITE`/`GLOBAL`),
     /// so an HTTP probe result isn't clobbered by unrelated device/route changes.
     pub fn recompute_global_state(&mut self) {
-        let previous = self.global_state;
-        self.global_state = mapping::deduce_global_state(&self.devices);
+        let was_gateway = mapping::state_has_gateway(self.global_state);
 
-        let staying_global = previous == mapping::nm_state::CONNECTED_GLOBAL
-            && self.global_state == mapping::nm_state::CONNECTED_GLOBAL;
-        if !staying_global {
-            self.connectivity = mapping::global_state_to_connectivity(self.global_state);
-        }
+        self.global_state = match mapping::deduce_route_tier(&self.devices) {
+            mapping::RouteTier::Disconnected => {
+                self.connectivity = mapping::nm_connectivity::NONE;
+                mapping::nm_state::DISCONNECTED
+            }
+            mapping::RouteTier::Local => {
+                self.connectivity = mapping::nm_connectivity::NONE;
+                mapping::nm_state::CONNECTED_LOCAL
+            }
+            mapping::RouteTier::HasGateway if was_gateway => {
+                mapping::gateway_state_for_connectivity(self.connectivity)
+            }
+            mapping::RouteTier::HasGateway => {
+                self.connectivity = mapping::nm_connectivity::UNKNOWN;
+                mapping::nm_state::CONNECTED_SITE
+            }
+        };
     }
 
     /// The device NM reports as primary: prefers a gateway, then lowest metric, then ifindex.

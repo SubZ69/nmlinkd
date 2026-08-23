@@ -2,6 +2,7 @@
 pub mod nm_state {
     pub const DISCONNECTED: u32 = 20;
     pub const CONNECTED_LOCAL: u32 = 50;
+    pub const CONNECTED_SITE: u32 = 60;
     pub const CONNECTED_GLOBAL: u32 = 70;
 }
 
@@ -58,10 +59,17 @@ pub mod netlink_flags {
     pub const IFF_DORMANT: u32 = 0x20000;
 }
 
-/// Deduce global NM state from device states and routes.
-pub fn deduce_global_state(
+/// Connectivity tier from routes alone, before factoring in the HTTP probe result.
+pub enum RouteTier {
+    Disconnected,
+    Local,
+    HasGateway,
+}
+
+/// Deduce the route-based connectivity tier from device states and routes.
+pub fn deduce_route_tier(
     devices: &std::collections::HashMap<i32, crate::state::DeviceInfo>,
-) -> u32 {
+) -> RouteTier {
     let mut has_local = false;
 
     for dev in devices.values() {
@@ -69,24 +77,29 @@ pub fn deduce_global_state(
         if has_ip {
             has_local = true;
             if dev.has_gateway() {
-                return nm_state::CONNECTED_GLOBAL;
+                return RouteTier::HasGateway;
             }
         }
     }
 
     if has_local {
-        nm_state::CONNECTED_LOCAL
+        RouteTier::Local
     } else {
-        nm_state::DISCONNECTED
+        RouteTier::Disconnected
     }
 }
 
-/// Default connectivity before any HTTP probe has run.
-pub fn global_state_to_connectivity(global_state: u32) -> u32 {
-    match global_state {
-        nm_state::CONNECTED_GLOBAL => nm_connectivity::UNKNOWN,
-        nm_state::CONNECTED_LOCAL | nm_state::DISCONNECTED => nm_connectivity::NONE,
-        _ => nm_connectivity::UNKNOWN,
+/// Whether an `NMState` means a gateway is present (`SITE` or `GLOBAL`).
+pub fn state_has_gateway(global_state: u32) -> bool {
+    global_state == nm_state::CONNECTED_SITE || global_state == nm_state::CONNECTED_GLOBAL
+}
+
+/// `SITE` if the probe hasn't confirmed full connectivity yet, `GLOBAL` otherwise.
+pub fn gateway_state_for_connectivity(connectivity: u32) -> u32 {
+    if connectivity == nm_connectivity::FULL {
+        nm_state::CONNECTED_GLOBAL
+    } else {
+        nm_state::CONNECTED_SITE
     }
 }
 

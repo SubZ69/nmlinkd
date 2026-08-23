@@ -43,28 +43,36 @@ fn run() -> ProbeResult {
     }
 }
 
-/// Probe and update `state.connectivity`, then re-emit the global state signal.
-/// No-op if there's no gateway to probe over.
+/// Probe and update `state.connectivity`/`state.global_state` (`SITE`/`GLOBAL`),
+/// then re-emit the global state signal. No-op if there's no gateway to probe over.
 pub async fn probe_and_notify(nm_conn: Connection, shared: SharedState) {
-    let global_state = shared.read().await.global_state;
-    if global_state != mapping::nm_state::CONNECTED_GLOBAL {
+    if !mapping::state_has_gateway(shared.read().await.global_state) {
         return;
     }
 
     let connectivity = mapping::probe_result_to_connectivity(probe().await);
-    shared.write().await.connectivity = connectivity;
+
+    let global_state = {
+        let mut state = shared.write().await;
+        if !mapping::state_has_gateway(state.global_state) {
+            return;
+        }
+        state.connectivity = connectivity;
+        state.global_state = mapping::gateway_state_for_connectivity(connectivity);
+        state.global_state
+    };
 
     notify_global_state_changed(&nm_conn, &shared, global_state).await;
 }
 
-/// Trigger an immediate probe when transitioning into `CONNECTED_GLOBAL`.
+/// Trigger an immediate probe when transitioning into a gateway tier (`SITE`/`GLOBAL`).
 pub fn trigger_on_global_transition(
     nm_conn: &Connection,
     shared: &SharedState,
     old_global: u32,
     new_global: u32,
 ) {
-    if old_global != new_global && new_global == mapping::nm_state::CONNECTED_GLOBAL {
+    if !mapping::state_has_gateway(old_global) && mapping::state_has_gateway(new_global) {
         tokio::spawn(probe_and_notify(nm_conn.clone(), shared.clone()));
     }
 }
