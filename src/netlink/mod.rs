@@ -115,8 +115,7 @@ pub async fn load_initial_state(shared: &SharedState) -> Result<()> {
             }
         }
 
-        state.global_state = mapping::deduce_global_state(&state.devices);
-        state.connectivity = mapping::global_state_to_connectivity(state.global_state);
+        state.recompute_global_state();
     }
 
     Ok(())
