@@ -43,18 +43,20 @@ fn run() -> ProbeResult {
     }
 }
 
-/// Probe and update `state.connectivity`/`state.global_state` (`SITE`/`GLOBAL`),
-/// then re-emit the global state signal. No-op if there's no gateway to probe over.
+/// Probe, update state, re-emit. No-op without a gateway or if checks are disabled.
 pub async fn probe_and_notify(nm_conn: Connection, shared: SharedState) {
-    if !mapping::state_has_gateway(shared.read().await.global_state) {
-        return;
+    {
+        let state = shared.read().await;
+        if !state.connectivity_check_enabled || !mapping::state_has_gateway(state.global_state) {
+            return;
+        }
     }
 
     let connectivity = mapping::probe_result_to_connectivity(probe().await);
 
     let global_state = {
         let mut state = shared.write().await;
-        if !mapping::state_has_gateway(state.global_state) {
+        if !state.connectivity_check_enabled || !mapping::state_has_gateway(state.global_state) {
             return;
         }
         state.connectivity = connectivity;

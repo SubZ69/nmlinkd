@@ -71,15 +71,30 @@ impl SharedStateExt for SharedState {
     }
 }
 
-#[derive(Default)]
 pub struct AppState {
     pub global_state: u32,
     pub connectivity: u32,
+    pub connectivity_check_enabled: bool,
     pub devices: HashMap<i32, DeviceInfo>,
     pub nameservers: Vec<String>,
     pub netlink_handle: Option<rtnetlink::Handle>,
     pub user_disconnect_pending: HashSet<i32>,
     pub user_activate_pending: HashSet<i32>,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self {
+            global_state: 0,
+            connectivity: 0,
+            connectivity_check_enabled: true,
+            devices: HashMap::new(),
+            nameservers: Vec::new(),
+            netlink_handle: None,
+            user_disconnect_pending: HashSet::new(),
+            user_activate_pending: HashSet::new(),
+        }
+    }
 }
 
 impl std::fmt::Debug for AppState {
@@ -119,6 +134,10 @@ impl AppState {
             mapping::RouteTier::Local => {
                 self.connectivity = mapping::nm_connectivity::NONE;
                 mapping::nm_state::CONNECTED_LOCAL
+            }
+            mapping::RouteTier::HasGateway if !self.connectivity_check_enabled => {
+                self.connectivity = mapping::nm_connectivity::FULL;
+                mapping::nm_state::CONNECTED_GLOBAL
             }
             mapping::RouteTier::HasGateway if was_gateway => {
                 mapping::gateway_state_for_connectivity(self.connectivity)

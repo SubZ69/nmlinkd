@@ -42,6 +42,11 @@ impl NmManager {
     }
 
     #[zbus(property)]
+    async fn connectivity_check_enabled(&self) -> bool {
+        self.state.read().await.connectivity_check_enabled
+    }
+
+    #[zbus(property)]
     async fn devices(&self) -> Vec<OwnedObjectPath> {
         self.device_paths().await
     }
