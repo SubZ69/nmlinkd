@@ -37,6 +37,11 @@ impl NmManager {
     }
 
     #[zbus(property)]
+    async fn connectivity_check_uri(&self) -> String {
+        crate::connectivity::PROBE_URL.to_owned()
+    }
+
+    #[zbus(property)]
     async fn devices(&self) -> Vec<OwnedObjectPath> {
         self.device_paths().await
     }

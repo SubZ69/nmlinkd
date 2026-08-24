@@ -7,7 +7,7 @@ use crate::mapping::{self, ProbeResult};
 use crate::nm::signals::notify_global_state_changed;
 use crate::state::SharedState;
 
-const PROBE_URL: &str = "http://detectportal.firefox.com/success.txt";
+pub const PROBE_URL: &str = "http://detectportal.firefox.com/success.txt";
 const PROBE_TIMEOUT_SECS: u64 = 5;
 const EXPECTED_BODY: &str = "success\n";
 const PROBE_INTERVAL: Duration = Duration::from_secs(300);
