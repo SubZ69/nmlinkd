@@ -65,6 +65,15 @@ impl NmManager {
     }
 
     #[zbus(property)]
+    async fn activating_connection(&self) -> OwnedObjectPath {
+        let state = self.state.read().await;
+        state
+            .activating_device()
+            .map(|dev| state::active_connection_path(dev.ifindex))
+            .unwrap_or_else(state::root_path)
+    }
+
+    #[zbus(property)]
     async fn metered(&self) -> u32 {
         4 // NM_METERED_GUESS_NO
     }

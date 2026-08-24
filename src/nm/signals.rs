@@ -59,7 +59,7 @@ pub async fn notify_global_state_changed(
         .interface::<_, super::manager::NmManager>(path.clone())
         .await;
 
-    let (connectivity, active_connections, primary_connection) = {
+    let (connectivity, active_connections, primary_connection, activating_connection) = {
         let st = shared.read().await;
         let ac: Vec<OwnedObjectPath> = st
             .devices
@@ -71,7 +71,11 @@ pub async fn notify_global_state_changed(
             .primary_device()
             .map(|d| state::active_connection_path(d.ifindex))
             .unwrap_or_else(state::root_path);
-        (st.connectivity, ac, primary)
+        let activating: OwnedObjectPath = st
+            .activating_device()
+            .map(|d| state::active_connection_path(d.ifindex))
+            .unwrap_or_else(state::root_path);
+        (st.connectivity, ac, primary, activating)
     };
 
     let mut changed: HashMap<&str, Value> = HashMap::new();
@@ -81,6 +85,10 @@ pub async fn notify_global_state_changed(
     changed.insert(
         "PrimaryConnection",
         Value::ObjectPath(primary_connection.into()),
+    );
+    changed.insert(
+        "ActivatingConnection",
+        Value::ObjectPath(activating_connection.into()),
     );
     emit_properties_changed(nm_conn, path.clone(), NM_IFACE, changed, &[]).await;
 

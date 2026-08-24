@@ -130,12 +130,24 @@ impl AppState {
         };
     }
 
-    /// The device NM reports as primary: prefers a gateway, then lowest metric, then ifindex.
+    /// The device NM reports as primary: must have a gateway by lowest metric then ifindex.
     pub fn primary_device(&self) -> Option<&DeviceInfo> {
         self.devices
             .values()
+            .filter(|d| d.nm_state == mapping::nm_device_state::ACTIVATED && d.has_gateway())
+            .min_by_key(|d| (d.best_metric(), d.ifindex))
+    }
+
+    /// The active device expected to become primary once it gets a gateway
+    /// (`ActivatingConnection`). None if some device is already primary.
+    pub fn activating_device(&self) -> Option<&DeviceInfo> {
+        if self.primary_device().is_some() {
+            return None;
+        }
+        self.devices
+            .values()
             .filter(|d| d.nm_state == mapping::nm_device_state::ACTIVATED)
-            .min_by_key(|d| (!d.has_gateway(), d.best_metric(), d.ifindex))
+            .min_by_key(|d| d.ifindex)
     }
 }
 
