@@ -46,8 +46,8 @@ See [Releases](../../releases) for pre-built tarballs.
 - D-Bus system bus
 - Root privileges (required for netlink socket and D-Bus system bus)
 
-**Conflicts with:**
-- NetworkManager (cannot run simultaneously)
+> [!IMPORTANT]
+> Conflicts with NetworkManager — cannot run simultaneously.
 
 ## How it works
 
@@ -61,6 +61,24 @@ nmlinkd subscribes to kernel netlink events:
 - `RTMGRP_IPV4_ROUTE` / `RTMGRP_IPV6_ROUTE` - routing table changes
 
 It translates these into NetworkManager D-Bus API signals and properties that desktop environments expect.
+
+## Configuration
+
+nmlinkd works out of the box with no configuration. To tune the HTTP connectivity check, copy [`dist/nmlinkd.conf.example`](dist/nmlinkd.conf.example) to `/etc/nmlinkd/nmlinkd.conf` and edit it:
+
+```toml
+[connectivity]
+enabled = true
+uri = "http://nmcheck.gnome.org/check_network_status.txt"
+response = "NetworkManager is online"
+interval_secs = 300
+timeout_secs = 20
+```
+
+`uri` and `response` must be changed together: the expected response depends on the vendor endpoint chosen.
+
+> [!NOTE]
+> `response` is ignored if the response carries an `X-NetworkManager-Status: online` header (e.g. Ubuntu's endpoint).
 
 ## Limitations
 
