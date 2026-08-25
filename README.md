@@ -30,6 +30,9 @@ Works with any DE that consumes the NetworkManager D-Bus API (GNOME, KDE Plasma,
 
 ## Installation
 
+> [!WARNING]
+> nmlinkd requires an already-configured alternative to NetworkManager (systemd-networkd, dhcpcd, iwd, ...) managing your interfaces. Don't disable NetworkManager unless you have one . Both claim the same D-Bus name and cannot run together, and without an alternative you'll lose network connectivity.
+
 ### Arch Linux (AUR)
 
 ```bash
@@ -38,7 +41,7 @@ yay -S nmlinkd
 
 ### Pre-built binaries
 
-See [Releases](../../releases) for pre-built tarballs.
+See [Releases](../../releases) for pre-built tarballs (includes an `INSTALL` file listing where each file goes, for packagers).
 
 ## Requirements
 
