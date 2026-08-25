@@ -37,12 +37,14 @@ jobs:
           cp dist/org.freedesktop.NetworkManager.conf "$DIR/"
           cp dist/org.freedesktop.NetworkManager.service "$DIR/"
           cp dist/org.freedesktop.NetworkManager.policy "$DIR/"
+          cp dist/nmlinkd.conf.example "$DIR/"
           printf '%s\n' \
             "install -Dm755 nmlinkd /usr/bin/nmlinkd" \
             "install -Dm644 nmlinkd.service /usr/lib/systemd/system/nmlinkd.service" \
             "install -Dm644 org.freedesktop.NetworkManager.conf /usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf" \
             "install -Dm644 org.freedesktop.NetworkManager.service /usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.service" \
             "install -Dm644 org.freedesktop.NetworkManager.policy /usr/share/polkit-1/actions/org.freedesktop.NetworkManager.policy" \
+            "install -Dm644 nmlinkd.conf.example /usr/share/doc/nmlinkd/nmlinkd.conf.example" \
             > "$DIR/INSTALL"
           tar czf "${DIR}.tar.gz" "$DIR"
 
