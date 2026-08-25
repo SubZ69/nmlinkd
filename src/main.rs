@@ -1,3 +1,4 @@
+mod config;
 mod connectivity;
 mod mapping;
 mod netlink;
@@ -41,7 +42,8 @@ async fn main() {
 async fn run() -> Result<()> {
     info!("starting nmlinkd");
 
-    let shared = state::new_shared_state();
+    let config = config::load();
+    let shared = state::new_shared_state(&config.connectivity);
 
     // Load initial state from kernel via netlink
     netlink::load_initial_state(&shared).await?;
@@ -50,7 +52,12 @@ async fn run() -> Result<()> {
     let nm_conn = nm::serve(shared.clone()).await?;
     info!("claimed org.freedesktop.NetworkManager on system bus");
 
-    tokio::spawn(connectivity::run_periodic(nm_conn.clone(), shared.clone()));
+    let probe_interval = std::time::Duration::from_secs(config.connectivity.interval_secs);
+    tokio::spawn(connectivity::run_periodic(
+        nm_conn.clone(),
+        shared.clone(),
+        probe_interval,
+    ));
 
     // Run netlink event loop
     netlink::monitor::run(nm_conn, shared).await

@@ -7,33 +7,47 @@ use crate::mapping::{self, ProbeResult};
 use crate::nm::signals::notify_global_state_changed;
 use crate::state::SharedState;
 
-pub const PROBE_URL: &str = "http://detectportal.firefox.com/success.txt";
-const PROBE_TIMEOUT_SECS: u64 = 5;
-const EXPECTED_BODY: &str = "success\n";
-const PROBE_INTERVAL: Duration = Duration::from_secs(300);
-
 /// Plain HTTP: captive portals intercept it, HTTPS would just fail the handshake.
-pub async fn probe() -> ProbeResult {
-    tokio::task::spawn_blocking(run)
+pub async fn probe(url: String, expected_body: String, timeout_secs: u64) -> ProbeResult {
+    tokio::task::spawn_blocking(move || run(&url, &expected_body, timeout_secs))
         .await
         .unwrap_or(ProbeResult::Failed)
 }
 
-fn run() -> ProbeResult {
-    let response = minreq::get(PROBE_URL)
-        .with_timeout(PROBE_TIMEOUT_SECS)
+/// Matches NM's own `X-NetworkManager-Status: online` short-circuit check.
+fn has_online_header(resp: &minreq::Response) -> bool {
+    resp.headers
+        .iter()
+        .any(|(k, v)| k.eq_ignore_ascii_case("x-networkmanager-status") && v.trim() == "online")
+}
+
+fn run(url: &str, expected_body: &str, timeout_secs: u64) -> ProbeResult {
+    let response = minreq::get(url)
+        .with_timeout(timeout_secs)
         .with_follow_redirects(false)
         .send();
 
     match response {
-        Ok(resp) if resp.status_code == 200 && resp.as_str().is_ok_and(|b| b == EXPECTED_BODY) => {
+        Ok(resp) if has_online_header(&resp) => ProbeResult::Full,
+        Ok(resp) if expected_body.is_empty() && resp.status_code == 204 => ProbeResult::Full,
+        Ok(resp)
+            if expected_body.is_empty()
+                && resp.status_code == 200
+                && resp.as_str().is_ok_and(str::is_empty) =>
+        {
+            ProbeResult::Full
+        }
+        Ok(resp) if resp.status_code == 200 && resp.as_str().is_ok_and(|b| b == expected_body) => {
             ProbeResult::Full
         }
         Ok(resp) if resp.status_code == 200 || (300..400).contains(&resp.status_code) => {
             ProbeResult::Portal
         }
         Ok(resp) => {
-            debug!(status = resp.status_code, "connectivity probe: unexpected status");
+            debug!(
+                status = resp.status_code,
+                "connectivity probe: unexpected status"
+            );
             ProbeResult::Failed
         }
         Err(e) => {
@@ -45,14 +59,20 @@ fn run() -> ProbeResult {
 
 /// Probe, update state, re-emit. No-op without a gateway or if checks are disabled.
 pub async fn probe_and_notify(nm_conn: Connection, shared: SharedState) {
-    {
+    let (url, expected_body, timeout_secs) = {
         let state = shared.read().await;
         if !state.connectivity_check_enabled || !mapping::state_has_gateway(state.global_state) {
             return;
         }
-    }
+        (
+            state.connectivity_check_uri.clone(),
+            state.connectivity_check_response.clone(),
+            state.connectivity_check_timeout_secs,
+        )
+    };
 
-    let connectivity = mapping::probe_result_to_connectivity(probe().await);
+    let connectivity =
+        mapping::probe_result_to_connectivity(probe(url, expected_body, timeout_secs).await);
 
     let global_state = {
         let mut state = shared.write().await;
@@ -80,8 +100,8 @@ pub fn trigger_on_global_transition(
 }
 
 /// Periodically re-probe while connected, to catch portals resolving or connectivity dropping.
-pub async fn run_periodic(nm_conn: Connection, shared: SharedState) {
-    let mut interval = tokio::time::interval(PROBE_INTERVAL);
+pub async fn run_periodic(nm_conn: Connection, shared: SharedState, interval: Duration) {
+    let mut interval = tokio::time::interval(interval);
     loop {
         interval.tick().await;
         probe_and_notify(nm_conn.clone(), shared.clone()).await;

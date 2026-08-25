@@ -49,8 +49,14 @@ pub fn root_path() -> OwnedObjectPath {
 
 pub type SharedState = Arc<RwLock<AppState>>;
 
-pub fn new_shared_state() -> SharedState {
-    Arc::new(RwLock::new(AppState::default()))
+pub fn new_shared_state(config: &crate::config::ConnectivityConfig) -> SharedState {
+    Arc::new(RwLock::new(AppState {
+        connectivity_check_enabled: config.enabled,
+        connectivity_check_uri: config.uri.clone(),
+        connectivity_check_response: config.response.clone(),
+        connectivity_check_timeout_secs: config.timeout_secs,
+        ..AppState::default()
+    }))
 }
 
 /// Extension trait for ergonomic access on SharedState.
@@ -75,6 +81,9 @@ pub struct AppState {
     pub global_state: u32,
     pub connectivity: u32,
     pub connectivity_check_enabled: bool,
+    pub connectivity_check_uri: String,
+    pub connectivity_check_response: String,
+    pub connectivity_check_timeout_secs: u64,
     pub devices: HashMap<i32, DeviceInfo>,
     pub nameservers: Vec<String>,
     pub netlink_handle: Option<rtnetlink::Handle>,
@@ -84,10 +93,14 @@ pub struct AppState {
 
 impl Default for AppState {
     fn default() -> Self {
+        let cfg = crate::config::ConnectivityConfig::default();
         Self {
             global_state: 0,
             connectivity: 0,
-            connectivity_check_enabled: true,
+            connectivity_check_enabled: cfg.enabled,
+            connectivity_check_uri: cfg.uri,
+            connectivity_check_response: cfg.response,
+            connectivity_check_timeout_secs: cfg.timeout_secs,
             devices: HashMap::new(),
             nameservers: Vec::new(),
             netlink_handle: None,

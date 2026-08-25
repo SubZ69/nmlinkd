@@ -38,7 +38,7 @@ impl NmManager {
 
     #[zbus(property)]
     async fn connectivity_check_uri(&self) -> String {
-        crate::connectivity::PROBE_URL.to_owned()
+        self.state.read().await.connectivity_check_uri.clone()
     }
 
     #[zbus(property)]

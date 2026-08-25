@@ -1,0 +1,22 @@
+# Example configuration for nmlinkd.
+# Copy this file to /etc/nmlinkd/nmlinkd.conf and edit as needed.
+# All keys are optional; anything left out keeps its default value below.
+
+[connectivity]
+
+# Whether to run the HTTP connectivity probe at all.
+enabled = true
+
+# URL checked to distinguish "gateway but no internet" from real connectivity.
+uri = "http://nmcheck.gnome.org/check_network_status.txt"
+
+# Expected response body for uri. Depends on the vendor endpoint chosen
+# above, so change both together. Ignored if the response carries an
+# "X-NetworkManager-Status: online" header.
+response = "NetworkManager is online"
+
+# How often to re-probe while connected, in seconds.
+interval_secs = 300
+
+# How long to wait for a response before giving up, in seconds.
+timeout_secs = 20
